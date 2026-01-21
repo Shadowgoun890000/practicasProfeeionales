@@ -2,7 +2,7 @@ import pandas as pd
 from shiny import App, render, ui, reactive
 
 # Carga de datos
-ruta_archivo = r"C:\Prácticas Profesionales\JSON\Resultado_Homogenizado.xlsx"
+ruta_archivo = r"/home/to-o/practicasProfeeionales/Prácticas Profesionales/JSON/Resultado_Homogenizado.xlsx"
 df = pd.read_excel(ruta_archivo)
 
 # Filtrar columnas donde todos los valores no son 0

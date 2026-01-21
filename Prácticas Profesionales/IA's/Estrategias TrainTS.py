@@ -9,7 +9,7 @@ from statsmodels.tsa.arima.model import ARIMA
 from prophet import Prophet
 
 # Cargar el archivo y configurar la columna de fecha
-file_path = r"C:\Prácticas Profesionales\JSON\Resultado_Homogenizado.xlsx"
+file_path = r"/home/to-o/practicasProfeeionales/Prácticas Profesionales/JSON/Resultado_Homogenizado.xlsx"
 data = pd.read_excel(file_path)
 
 data['fecha_hora'] = pd.to_datetime(data['fecha_hora'])

@@ -90,7 +90,7 @@ def graficar_comparacion(train_df, test_df, features):
 
 # --- Función principal para ejecutar todo ---
 def main():
-    ruta_archivo = r"C:\Prácticas Profesionales\JSON\Resultado_Homogenizado.xlsx"
+    ruta_archivo =r"/home/to-o/practicasProfeeionales\Prácticas Profesionales\JSON\Resultado_Homogenizado.xlsx"
     features = ['eToday (kWh)', 'eTotal (kWh)', 'power (kW)',
                 'wind_speed_100m', 'wind_speed_10m',
                 'wind_direction_10m', "relative_humidity"]
