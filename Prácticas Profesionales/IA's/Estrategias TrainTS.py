@@ -460,7 +460,7 @@ if filas_resumen:
         print(f"\nResultados detallados guardados en 'resultados_traints_periodos_largos.csv'")
 
         # Guardar también en Excel con formato
-        with pd.ExcelWriter('resultados_traints_periodos_largos.xlsx', engine='openpyxl') as writer:
+        with pd.ExcelWriter('IA', engine='openpyxl') as writer:
             df_resumen.to_excel(writer, sheet_name='Resultados', index=False)
 
             # Crear hoja de resumen
