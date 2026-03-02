@@ -24,9 +24,13 @@ print(f"Total días: {(data.index.max() - data.index.min()).days}")
 # Variables
 target = 'valor (kWh)'
 features = [
-    'eToday (kWh)', 'eTotal (kWh)', 'power (kW)',
-    'wind_speed_100m', 'wind_speed_10m',
-    'wind_direction_10m', "relative_humidity"
+    # Variables del inversor
+    'eToday (kWh)', 'eTotal (kWh)',
+    # Variables meteorológicas/energéticas
+    'air_temp', 'relative_humidity',
+    'power (kW)',
+    'wind_speed_10m', 'wind_direction_10m',
+    'ghi', 'dni', 'gti'
 ]
 features = [col for col in features if col in data.columns]
 
@@ -41,9 +45,9 @@ features_extendidas = features + ['hora', 'dia_semana', 'es_fin_semana', 'mes']
 features_extendidas = [col for col in features_extendidas if col in data.columns]
 
 
-# Función para calcular métricas mejorada
+# Función para calcular métricas
 def calcular_métricas(y_true, y_pred):
-    """Calcula métricas de evaluación con manejo robusto"""
+    """Calcula métricas de evaluación"""
     try:
         rmse = np.sqrt(mean_squared_error(y_true, y_pred))
         mae = mean_absolute_error(y_true, y_pred)
@@ -62,7 +66,7 @@ def calcular_métricas(y_true, y_pred):
         return np.nan, np.nan, np.nan, np.nan
 
 
-# PERIODOS MODIFICADOS: 1 mes, bimestral, trimestral, anual
+# PERIODOS: 1 mes, bimestral, trimestral, anual
 periodos = {
     "1_mes": "30D",
     "2_meses_bimestral": "60D",

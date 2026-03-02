@@ -33,20 +33,23 @@ data['estacion'] = (data['mes'] % 12 + 3) // 3  # 1: Primavera, 2: Verano, 3: Ot
 # Variables objetivo y características
 target = 'valor (kWh)'
 features_base = [
-    'eToday (kWh)', 'eTotal (kWh)', 'power (kW)',
-    'wind_speed_100m', 'wind_speed_10m',
-    'wind_direction_10m', "relative_humidity"
+    # Variables del inversor
+    'eToday (kWh)', 'eTotal (kWh)',
+    # Variables meteorológicas/energéticas
+    'air_temp', 'relative_humidity',
+    'power (kW)',
+    'wind_speed_10m', 'wind_direction_10m',
+    'ghi', 'dni', 'gti'
 ]
-
 # Filtrar características disponibles
 features = [col for col in features_base if col in data.columns]
 features_extendidas = features + ['hora', 'dia_semana', 'es_fin_semana', 'mes', 'estacion']
 features_extendidas = [col for col in features_extendidas if col in data.columns]
 
 
-# Función para calcular métricas mejorada
+# Función para calcular métricas
 def calcular_métricas(y_true, y_pred):
-    """Calcula métricas de evaluación con manejo robusto"""
+    """Calcula métricas de evaluación"""
     try:
         rmse = np.sqrt(mean_squared_error(y_true, y_pred))
         mae = mean_absolute_error(y_true, y_pred)
@@ -65,7 +68,7 @@ def calcular_métricas(y_true, y_pred):
         return np.nan, np.nan, np.nan, np.nan
 
 
-# PERIODOS MODIFICADOS: 1 mes, bimestral, trimestral, anual
+# PERIODOS: 1 mes, bimestral, trimestral, anual
 periodos = {
     "1_mes": "30D",
     "2_meses_bimestral": "60D",

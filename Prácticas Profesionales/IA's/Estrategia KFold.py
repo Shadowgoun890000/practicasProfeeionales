@@ -31,13 +31,23 @@ data['estacion'] = (data['mes'] % 12 + 3) // 3  # 1: Primavera, 2: Verano, 3: Ot
 
 # Definir variables
 objetivo = 'valor (kWh)'
-features = ['eToday (kWh)', 'eTotal (kWh)', 'power (kW)',
-            'wind_speed_100m', 'wind_speed_10m', 'wind_direction_10m',
-            'relative_humidity', 'hora', 'dia_semana', 'es_fin_semana', 'mes', 'estacion']
+features = [
+    # Variables del inversor
+    'eToday (kWh)', 'eTotal (kWh)',
+
+    # Variables meteorológicas/energéticas
+    'air_temp', 'relative_humidity',
+    'power (kW)',
+    'wind_speed_10m', 'wind_direction_10m',
+    'ghi', 'dni', 'gti',
+
+    # Variables temporales
+    'hora', 'dia_semana', 'es_fin_semana', 'mes', 'estacion'
+]
 features = [col for col in features if col in data.columns]
 
 
-# Funciones de métricas mejoradas
+# Funciones de métricas
 def calcular_métricas(y_real, y_pred):
     """Calcula métricas de evaluación con manejo de errores"""
     try:
@@ -52,7 +62,7 @@ def calcular_métricas(y_real, y_pred):
         return np.nan, np.nan, np.nan, np.nan
 
 
-# PERIODOS MODIFICADOS: 1 mes, bimestral, trimestral, anual
+# PERIODOS: 1 mes, bimestral, trimestral, anual
 periodos = {
     "1_mes": "30D",
     "2_meses_bimestral": "60D",
@@ -73,7 +83,7 @@ for nombre, periodo in periodos.items():
     print(f"Evaluando periodo: {nombre} ({periodo})")
     print(f"{'=' * 50}")
 
-    # Extraer datos de prueba (los últimos 'periodo' días)
+    # Extraer datos de prueba
     test_data = data.last(periodo)
     train_data = data.iloc[:-len(test_data)]
 
@@ -108,7 +118,7 @@ for nombre, periodo in periodos.items():
         prophet_data = train_data.reset_index().rename(columns={'fecha_hora': 'ds', objetivo: 'y'})
 
         # Seleccionar regresores disponibles
-        regresores_disponibles = ['power (kW)', 'wind_speed_10m', 'relative_humidity']
+        regresores_disponibles = ['air_temp', 'relative_humidity', 'power (kW)', 'wind_speed_10m', 'wind_direction_10m', 'ghi', 'dni', 'gti', 'eToday (kWh)', 'eTotal (kWh)']
         regresores_usar = [r for r in regresores_disponibles if r in train_data.columns]
 
         prophet_model = Prophet(
