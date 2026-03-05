@@ -24,7 +24,21 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/Prácticas Profesionales/IA's/IA's results/resultados_traints_periodos_largos.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="/Prácticas Profesionales/IA's/IA's results/resultados_trainvts_periodos_largos.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/Prácticas Profesionales/JSON/Excel/datos_potencia_procesados.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
