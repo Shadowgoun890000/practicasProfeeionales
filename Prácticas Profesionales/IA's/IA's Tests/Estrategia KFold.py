@@ -10,7 +10,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # Cargar los datos
-file_path = r"/home/to-o/practicasProfeeionales/Prácticas Profesionales/JSON/Resultado_Homogenizado.xlsx"
+file_path = r"/JSON/Resultado_Homogenizado.xlsx"
 data = pd.read_excel(file_path)
 
 # Preprocesamiento de fechas

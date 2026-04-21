@@ -1,0 +1,17 @@
+MODEL_FEATURES = [
+    "eToday (kWh)",
+    "eTotal (kWh)",
+    "air_temp",
+    "relative_humidity",
+    "power (kW)",
+    "wind_speed_10m",
+    "wind_direction_10m",
+    "ghi",
+    "dni",
+    "gti",
+    "hora",
+    "dia_semana",
+    "es_fin_semana",
+    "mes",
+    "estacion",
+]
