@@ -1,4 +1,5 @@
 from shiny import App
+from pathlib import Path
 
 from app.config import MODEL_FILE, MODEL_NAME
 from app.ui import create_app_ui
@@ -12,7 +13,9 @@ df = add_time_features(df)
 
 artifact = load_model_if_exists(MODEL_FILE)
 
+static_dir = Path(__file__).parent / "static"
+
 app_ui = create_app_ui(df)
 server = create_server(df, model=artifact, model_name=MODEL_NAME)
 
-app = App(app_ui, server)
+app = App(app_ui, server, static_assets=static_dir)

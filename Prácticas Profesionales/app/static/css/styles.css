@@ -1,0 +1,250 @@
+:root {
+    --bg: #f4f7fb;
+    --surface: #ffffff;
+    --border: #dbe4ee;
+    --text: #1e293b;
+    --muted: #64748b;
+    --primary: #2563eb;
+    --primary-soft: #dbeafe;
+    --shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+    --radius: 14px;
+}
+
+html, body {
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    margin: 0;
+    padding: 0;
+}
+
+/* Encabezado principal */
+h2 {
+    font-size: 2.1rem;
+    font-weight: 700;
+    color: #0f172a;
+    margin-top: 1rem;
+    margin-bottom: 0.35rem;
+}
+
+p {
+    color: var(--muted);
+    font-size: 1rem;
+    margin-bottom: 1rem;
+}
+
+/* Tabs */
+.nav-tabs {
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 1rem;
+}
+
+.nav-tabs .nav-link {
+    border: none !important;
+    border-radius: 12px 12px 0 0 !important;
+    color: #334155 !important;
+    font-weight: 600;
+    padding: 0.8rem 1.1rem;
+    transition: all 0.2s ease;
+}
+
+.nav-tabs .nav-link:hover {
+    background-color: #eef4ff;
+    color: var(--primary) !important;
+}
+
+.nav-tabs .nav-link.active {
+    background-color: var(--surface) !important;
+    color: var(--primary) !important;
+    border: 1px solid var(--border) !important;
+    border-bottom: 1px solid var(--surface) !important;
+}
+
+/* Sidebar */
+.sidebar,
+.bslib-sidebar-layout > .sidebar {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 1rem;
+}
+
+.sidebar h4 {
+    color: #0f172a;
+    font-weight: 700;
+    margin-bottom: 1rem;
+}
+
+/* Botón del sidebar más neutro */
+.bslib-sidebar-layout .collapse-toggle,
+.bslib-sidebar-layout .sidebar-toggle,
+.bslib-sidebar-layout [data-bs-toggle="collapse"] {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    color: #64748b !important;
+    border-radius: 0 !important;
+    padding: 0.25rem !important;
+}
+
+/* Cards */
+.card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    margin-bottom: 1rem;
+    overflow: hidden;
+}
+
+.card-header {
+    background: #f8fbff !important;
+    border-bottom: 1px solid #e8eef5 !important;
+    color: #0f172a;
+    font-weight: 700;
+    padding: 0.9rem 1rem;
+}
+
+/* Value boxes */
+.value-box {
+    background: var(--surface) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: var(--radius) !important;
+    box-shadow: var(--shadow) !important;
+    padding: 0.75rem !important;
+}
+
+.value-box .value-box-title {
+    color: var(--muted) !important;
+    font-weight: 600;
+}
+
+.value-box .value-box-value {
+    color: #0f172a !important;
+    font-weight: 700;
+}
+
+/* Inputs */
+input,
+select,
+textarea,
+.form-control {
+    border-radius: 10px !important;
+    border: 1px solid #cbd5e1 !important;
+    box-shadow: none !important;
+}
+
+input:focus,
+select:focus,
+textarea:focus,
+.form-control:focus {
+    border-color: var(--primary) !important;
+    box-shadow: 0 0 0 0.15rem rgba(37, 99, 235, 0.12) !important;
+}
+
+/* Botones */
+button,
+.btn,
+.btn-default {
+    border-radius: 10px !important;
+    border: 1px solid #bfdbfe !important;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    color: #1d4ed8 !important;
+    font-weight: 700 !important;
+    padding: 0.6rem 1rem !important;
+    transition: all 0.2s ease-in-out;
+}
+
+button:hover,
+.btn:hover,
+.btn-default:hover {
+    background: var(--primary-soft) !important;
+    border-color: #93c5fd !important;
+    transform: translateY(-1px);
+}
+
+/* DataGrid / DataFrame */
+.shiny-data-grid {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    background: white;
+}
+
+.shiny-data-grid table {
+    font-size: 0.95rem;
+}
+
+.shiny-data-grid th {
+    background: #f8fafc !important;
+    color: #0f172a !important;
+    font-weight: 700 !important;
+}
+
+.shiny-data-grid td {
+    color: #1e293b;
+}
+
+/* Texto del modelo */
+pre, .shiny-text-output {
+    font-size: 0.95rem;
+}
+
+/* Gráficas */
+img,
+canvas {
+    border-radius: 10px;
+}
+
+/* Espaciado general */
+.container-fluid {
+    padding-left: 1rem;
+    padding-right: 1rem;
+}
+
+/* Scroll bonito */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: #94a3b8 #e2e8f0;
+}
+
+*::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+    background: #e2e8f0;
+}
+
+*::-webkit-scrollbar-thumb {
+    background: #94a3b8;
+    border-radius: 8px;
+}
+
+/* Responsive */
+@media (max-width: 992px) {
+    h2 {
+        font-size: 1.6rem;
+    }
+
+    .card-header {
+        font-size: 0.95rem;
+    }
+}
+
+/* Ocultar el botón de colapsar sidebar mientras el datepicker está abierto */
+body.datepicker-open .bslib-sidebar-layout .collapse-toggle,
+body.datepicker-open .bslib-sidebar-layout .sidebar-toggle,
+body.datepicker-open .bslib-sidebar-layout [data-bs-toggle="collapse"] {
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+/* El calendario debe mostrarse por encima */
+.datepicker,
+.datepicker-dropdown {
+    z-index: 99999 !important;
+    position: absolute !important;
+}

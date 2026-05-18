@@ -1,6 +1,9 @@
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import pandas as pd
+
+import plotly.graph_objects as go
+from shinywidgets import render_widget
 from shiny import reactive, render
 
 from app.config import (
@@ -10,7 +13,6 @@ from app.config import (
     DEFAULT_PREDICTION_DAYS,
     TARGET_COLUMN,
 )
-from ml.economics import estimate_cost
 from ml.forecast import forecast_with_model
 
 
@@ -19,9 +21,18 @@ def create_server(df, model=None, model_name="Random Forest"):
         columnas_energia_disponibles = [c for c in COLUMNAS_ENERGIA if c in df.columns]
         columnas_clima_disponibles = [c for c in COLUMNAS_CLIMA if c in df.columns]
 
-        energia_actual = reactive.value(df[columnas_energia_disponibles].copy())
-        clima_actual = reactive.value(df[columnas_clima_disponibles].copy())
-        prediccion_actual = reactive.value(pd.DataFrame())
+        df_energia_base = df[columnas_energia_disponibles].copy()
+        df_clima_base = df[columnas_clima_disponibles].copy()
+        df_target_base = df[[DATETIME_COLUMN, TARGET_COLUMN]].copy().sort_values(DATETIME_COLUMN)
+
+        # Columnas Auxiliares precalculadas para filtros
+        df_energia_base["_fecha"]  = df_energia_base[DATETIME_COLUMN].dt.date
+        df_energia_base["_hora"]   = df_energia_base[DATETIME_COLUMN].dt.hour
+        df_clima_base["_fecha"]    = df_clima_base[DATETIME_COLUMN].dt.date
+
+        energia_actual = reactive.Value(df_energia_base.copy())
+        clima_actual = reactive.Value(df_clima_base.copy())
+        prediccion_actual = reactive.Value(pd.DataFrame())
 
         # =========================
         # Lectura segura del artefacto
@@ -38,37 +49,69 @@ def create_server(df, model=None, model_name="Random Forest"):
         # Funciones auxiliares
         # =========================
         def filtrar_energia():
-            df_energia = df[columnas_energia_disponibles].copy()
-
             inicio, fin = input.rango_fechas_energia()
             hora_inicio, hora_fin = input.hora_rango_energia()
 
-            df_energia = df_energia[
-                (df_energia[DATETIME_COLUMN].dt.date >= inicio)
-                & (df_energia[DATETIME_COLUMN].dt.date <= fin)
+            filtrado = df_energia_base[
+                (df_energia_base["_fecha"] >= inicio)
+                & (df_energia_base["_fecha"] <= fin)
+                & (df_energia_base["_hora"] >= hora_inicio)
+                & (df_energia_base["_hora"] <= hora_fin)
             ]
-
-            df_energia = df_energia[
-                (df_energia[DATETIME_COLUMN].dt.hour >= hora_inicio)
-                & (df_energia[DATETIME_COLUMN].dt.hour <= hora_fin)
-            ]
-
-            return df_energia
+            return filtrado.drop(columns=["_fecha", "_hora"], errors="ignore")
 
         def filtrar_clima():
-            df_clima = df[columnas_clima_disponibles].copy()
-
             inicio, fin = input.rango_fechas_clima()
-            df_clima = df_clima[
-                (df_clima[DATETIME_COLUMN].dt.date >= inicio)
-                & (df_clima[DATETIME_COLUMN].dt.date <= fin)
+
+            filtrado = df_clima_base[
+                (df_clima_base["_fecha"] >= inicio)
+                & (df_clima_base["_fecha"] <= fin)
             ]
 
-            return df_clima
+            return filtrado.drop(columns=["_fecha"], errors="ignore")
+
+        def preparar_vista_energia(df_energia: pd.DataFrame) -> pd.DataFrame:
+            vista = input.vista_energia() or "completa"
+            df_vista = df_energia.copy()
+
+            if df_vista.empty or TARGET_COLUMN not in df_vista.columns:
+                return df_vista
+
+            if vista == "ultimos_7":
+                fecha_max = df_vista[DATETIME_COLUMN].max()
+                df_vista = df_vista[
+                    df_vista[DATETIME_COLUMN] >= fecha_max - pd.Timedelta(days=7)
+                    ]
+                return df_vista
+
+            if vista == "ultimos_30":
+                fecha_max = df_vista[DATETIME_COLUMN].max()
+                df_vista = df_vista[
+                    df_vista[DATETIME_COLUMN] >= fecha_max - pd.Timedelta(days=30)
+                    ]
+                return df_vista
+
+            df_vista["fecha"] = df_vista[DATETIME_COLUMN].dt.date
+
+            if vista == "promedio_diario":
+                return (
+                    df_vista.groupby("fecha", as_index=False)[TARGET_COLUMN]
+                    .mean()
+                    .rename(columns={TARGET_COLUMN: "valor"})
+                )
+
+            if vista == "maximo_diario":
+                return (
+                    df_vista.groupby("fecha", as_index=False)[TARGET_COLUMN]
+                    .max()
+                    .rename(columns={TARGET_COLUMN: "valor"})
+                )
+
+            return df_vista
 
         def generar_prediccion_provisional(dias: int) -> pd.DataFrame:
-            base = df[[DATETIME_COLUMN, TARGET_COLUMN]].copy().sort_values(DATETIME_COLUMN)
-            ultimo_timestamp = base[DATETIME_COLUMN].max()
+            base = df_target_base
+            ultimo_timestamp = base[DATETIME_COLUMN].iloc[-1]
 
             pasos_por_dia = 288  # 5 minutos
             total_pasos = dias * pasos_por_dia
@@ -119,8 +162,9 @@ def create_server(df, model=None, model_name="Random Forest"):
             """
             energia_actual.set(filtrar_energia())
             clima_actual.set(filtrar_clima())
-            """
             prediccion_actual.set(generar_prediccion())
+            """
+            pass
 
         # =========================
         # Actualizaciones por botón
@@ -169,30 +213,138 @@ def create_server(df, model=None, model_name="Random Forest"):
         # Energía
         # =========================
         @output
-        @render.table
+        @render.data_frame
         def tabla_datos_energia():
-            return energia_actual()
+            return render.DataGrid(
+                energia_actual(),
+                width="100%",
+                height="420px",
+                summary= False,
+                filters= False,
+            )
 
         @output
         @render.plot
         def grafica_energia():
-            df_energia = energia_actual()
-            fig, ax = plt.subplots(figsize=(10, 4))
+            df_energia = energia_actual().drop(columns=["_fecha", "_hora"], errors="ignore")
+            vista = input.vista_energia() or "completa"
+            fig, ax = plt.subplots(figsize=(11, 4.5))
+
+            if df_energia.empty or TARGET_COLUMN not in df_energia.columns:
+                plt.tight_layout()
+                return fig
+
+            df_vista = preparar_vista_energia(df_energia)
+
+            if vista == "completa":
+                ax.plot(
+                    df_vista[DATETIME_COLUMN],
+                    df_vista[TARGET_COLUMN],
+                    linewidth=1.3,
+                    alpha=0.9,
+                    label="Generación observada"
+                )
+                ax.set_title("Serie temporal de la generación observada")
+                ax.set_xlabel("Fecha y hora")
+                ax.set_ylabel("Generación")
+                ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
+                plt.xticks(rotation=45)
+
+            elif vista == "ultimos_7":
+                ax.plot(
+                    df_vista[DATETIME_COLUMN],
+                    df_vista[TARGET_COLUMN],
+                    linewidth=1.5,
+                    alpha=0.95,
+                    label="Últimos 7 días"
+                )
+                ax.set_title("Generación observada - últimos 7 días")
+                ax.set_xlabel("Fecha y hora")
+                ax.set_ylabel("Generación")
+                ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
+                plt.xticks(rotation=45)
+
+            elif vista == "ultimos_30":
+                ax.plot(
+                    df_vista[DATETIME_COLUMN],
+                    df_vista[TARGET_COLUMN],
+                    linewidth=1.5,
+                    alpha=0.95,
+                    label="Últimos 30 días"
+                )
+                ax.set_title("Generación observada - últimos 30 días")
+                ax.set_xlabel("Fecha y hora")
+                ax.set_ylabel("Generación")
+                ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
+                plt.xticks(rotation=45)
+
+            elif vista == "promedio_diario":
+                ax.plot(
+                    df_vista["fecha"],
+                    df_vista["valor"],
+                    linewidth=2,
+                    marker="o",
+                    markersize=3,
+                    label="Promedio diario"
+                )
+                ax.set_title("Promedio diario de la generación")
+                ax.set_xlabel("Fecha")
+                ax.set_ylabel("Promedio diario")
+                plt.xticks(rotation=45)
+
+            elif vista == "maximo_diario":
+                ax.plot(
+                    df_vista["fecha"],
+                    df_vista["valor"],
+                    linewidth=2,
+                    marker="o",
+                    markersize=3,
+                    label="Máximo diario"
+                )
+                ax.set_title("Máximo diario de la generación")
+                ax.set_xlabel("Fecha")
+                ax.set_ylabel("Máximo diario")
+                plt.xticks(rotation=45)
+
+            ax.grid(True, alpha=0.25)
+            ax.legend(loc="upper right")
+            plt.tight_layout()
+            return fig
+
+        @output
+        @render.plot
+        def grafica_energia_diaria():
+            df_energia = energia_actual().drop(columns=["_fecha", "_hora"], errors="ignore").copy()
+            fig, ax = plt.subplots(figsize=(11, 4.5))
 
             if TARGET_COLUMN in df_energia.columns and not df_energia.empty:
-                ax.plot(
-                    df_energia[DATETIME_COLUMN],
-                    df_energia[TARGET_COLUMN],
-                    label=TARGET_COLUMN
-                )
-                ax.set_title("Comportamiento energético en el tiempo")
-                ax.set_xlabel("Fecha y hora")
-                ax.set_ylabel(TARGET_COLUMN)
-                ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d %H:%M"))
-                plt.xticks(rotation=45)
-                ax.grid(True, alpha=0.3)
-                ax.legend()
+                df_energia["fecha"] = df_energia[DATETIME_COLUMN].dt.date
+                diario = df_energia.groupby("fecha")[TARGET_COLUMN].agg(["mean", "max"]).reset_index()
 
+                ax.plot(
+                    diario["fecha"],
+                    diario["mean"],
+                    linewidth=2,
+                    marker="o",
+                    markersize=3,
+                    label="Promedio diario"
+                )
+                ax.plot(
+                    diario["fecha"],
+                    diario["max"],
+                    linewidth=2,
+                    marker="o",
+                    markersize=3,
+                    label="Máximo diario"
+                )
+
+                ax.set_title("Resumen diario de la generación")
+                ax.set_xlabel("Fecha")
+                ax.set_ylabel("Generación")
+                ax.grid(True, alpha=0.25)
+                ax.legend(loc="upper right")
+
+            plt.xticks(rotation=45)
             plt.tight_layout()
             return fig
 
@@ -200,10 +352,16 @@ def create_server(df, model=None, model_name="Random Forest"):
         # Clima
         # =========================
         @output
-        @render.table
+        @render.data_frame
         def tabla_datos_clima():
-            return clima_actual()
-
+            return render.DataGrid(
+                clima_actual(),
+                width="100%",
+                height="420px",
+                summary= False,
+                filters=False,
+            )
+        """
         @output
         @render.plot
         def grafica_clima():
@@ -214,13 +372,41 @@ def create_server(df, model=None, model_name="Random Forest"):
 
             if variable in df_clima.columns and not df_clima.empty:
                 ax.plot(df_clima[DATETIME_COLUMN], df_clima[variable], label=variable)
-                ax.set_title(f"Serie temporal de {variable}")
+                ax.set_title(f"Serie temporal climática: {variable}")
                 ax.set_xlabel("Fecha y hora")
                 ax.set_ylabel(variable)
                 ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d %H:%M"))
                 plt.xticks(rotation=45)
                 ax.grid(True, alpha=0.3)
                 ax.legend()
+
+            plt.tight_layout()
+            return fig
+        """
+
+        @output
+        @render.plot
+        def grafica_clima():
+            df_clima = clima_actual().drop(columns=["_fecha"], errors="ignore")
+            variable = input.variable_clima()
+
+            fig, ax = plt.subplots(figsize=(11, 4.5))
+
+            if variable in df_clima.columns and not df_clima.empty:
+                ax.plot(
+                    df_clima[DATETIME_COLUMN],
+                    df_clima[variable],
+                    linewidth=1.5,
+                    alpha=0.9,
+                    label=variable.replace("_", " ").title()
+                )
+                ax.set_title(f"Serie temporal climática: {variable.replace('_', ' ').title()}")
+                ax.set_xlabel("Fecha y hora")
+                ax.set_ylabel(variable.replace("_", " ").title())
+                ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
+                plt.xticks(rotation=45)
+                ax.grid(True, alpha=0.25)
+                ax.legend(loc="upper right")
 
             plt.tight_layout()
             return fig
@@ -258,6 +444,7 @@ def create_server(df, model=None, model_name="Random Forest"):
         @output
         @render.text
         def txt_estado_modelo():
+
             if rf_model is None:
                 return (
                     "No se encontró el modelo serializado.\n"
@@ -268,9 +455,14 @@ def create_server(df, model=None, model_name="Random Forest"):
                 "Modelo Random Forest cargado correctamente.",
             ]
 
+            if prediccion_actual().empty:
+                msg.append("Presiona 'Generar predicción' para calcular el horizonte seleccionado.")
+
+            """
             if artifact_features:
                 msg.append(f"Features del modelo: {len(artifact_features)}")
                 msg.append(f"Columnas usadas: {', '.join(artifact_features)}")
+            """
 
             if artifact_target:
                 msg.append(f"Variable objetivo: {artifact_target}")
@@ -321,16 +513,23 @@ def create_server(df, model=None, model_name="Random Forest"):
             return "\n".join(msg)
 
         @output
-        @render.table
+        @render.data_frame
         def tabla_prediccion():
             pred = prediccion_actual().copy()
 
             if pred.empty:
-                return pred
+                return render.DataGrid(pd.DataFrame(), width="100%", height="420px")
 
             pred = pred.rename(columns={"prediccion": "generacion_predicha"})
-            return pred
 
+            return render.DataGrid(
+                pred,
+                width="100%",
+                height="420px",
+                summary= False,
+                filters=False,
+            )
+        """
         @output
         @render.plot
         def grafica_prediccion():
@@ -369,6 +568,153 @@ def create_server(df, model=None, model_name="Random Forest"):
             ax.grid(True, alpha=0.3)
             ax.legend()
 
+            plt.tight_layout()
+            return fig
+        """
+
+        @output
+        @render_widget
+        def grafica_prediccion():
+            pred = prediccion_actual().copy()
+            dias_hist = input.dias_historia_pred() or 30
+
+            hist = df[[DATETIME_COLUMN, TARGET_COLUMN]].copy().sort_values(DATETIME_COLUMN)
+
+            # Conversión segura
+            hist[DATETIME_COLUMN] = pd.to_datetime(hist[DATETIME_COLUMN], errors="coerce")
+            hist[TARGET_COLUMN] = pd.to_numeric(hist[TARGET_COLUMN], errors="coerce")
+            hist = hist.dropna(subset=[DATETIME_COLUMN, TARGET_COLUMN])
+
+            hist = hist[
+                hist[DATETIME_COLUMN] >= hist[DATETIME_COLUMN].max() - pd.Timedelta(days=dias_hist)
+                ]
+
+            if not pred.empty:
+                pred[DATETIME_COLUMN] = pd.to_datetime(pred[DATETIME_COLUMN], errors="coerce")
+                pred["prediccion"] = pd.to_numeric(pred["prediccion"], errors="coerce")
+                pred = pred.dropna(subset=[DATETIME_COLUMN, "prediccion"])
+
+            fig = go.Figure()
+
+            # Histórico
+            if not hist.empty:
+                fig.add_trace(
+                    go.Scatter(
+                        x=hist[DATETIME_COLUMN].tolist(),
+                        y=hist[TARGET_COLUMN].tolist(),
+                        mode="lines",
+                        name="Histórico",
+                        line=dict(width=2, color="#2563eb"),
+                        hovertemplate=(
+                            "Fecha: %{x|%Y-%m-%d %H:%M}<br>"
+                            "Generación: %{y:.2f}<extra></extra>"
+                        ),
+                    )
+                )
+
+            # Predicción
+            if not pred.empty:
+                inicio_pred = pred[DATETIME_COLUMN].min()
+                fin_pred = pred[DATETIME_COLUMN].max()
+
+                fig.add_vline(
+                    x=inicio_pred,
+                    line_dash="dot",
+                    line_width=2,
+                    line_color="#475569",
+                    opacity=0.9,
+                )
+
+                fig.add_vrect(
+                    x0=inicio_pred,
+                    x1=fin_pred,
+                    fillcolor="rgba(249,115,22,0.12)",
+                    opacity=0.12,
+                    line_width=0,
+                    layer="below",
+                )
+
+                fig.add_trace(
+                    go.Scatter(
+                        x=pred[DATETIME_COLUMN].tolist(),
+                        y=pred["prediccion"].tolist(),
+                        mode="lines",
+                        name="Predicción",
+                        line=dict(width=2, dash="dash", color="#f97316"),
+                        hovertemplate=(
+                            "Fecha: %{x|%Y-%m-%d %H:%M}<br>"
+                            "Predicción: %{y:.2f}<extra></extra>"
+                        ),
+                    )
+                )
+
+            fig.update_layout(
+                title="Histórico reciente y predicción de generación",
+                xaxis_title="Fecha y hora",
+                yaxis_title="Generación",
+                template="plotly_white",
+                height=460,
+                hovermode="x unified",
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.02,
+                    xanchor="right",
+                    x=1
+                ),
+                margin=dict(l=60, r=30, t=70, b=60),
+            )
+
+            fig.update_xaxes(
+                type="date",
+                tickformat="%Y-%m-%d",
+                hoverformat="%Y-%m-%d %H:%M",
+                showgrid=True,
+                gridcolor="rgba(148,163,184,0.18)",
+            )
+
+            fig.update_yaxes(
+                showgrid=True,
+                gridcolor="rgba(148,163,184,0.18)",
+                zeroline=False,
+            )
+
+            return fig
+
+        @output
+        @render.plot
+        def grafica_prediccion_diaria():
+            pred = prediccion_actual().copy()
+            fig, ax = plt.subplots(figsize=(11, 4.5))
+
+            if not pred.empty:
+                pred["fecha"] = pred[DATETIME_COLUMN].dt.date
+                diario = pred.groupby("fecha")["prediccion"].agg(["mean", "max"]).reset_index()
+
+                ax.plot(
+                    diario["fecha"],
+                    diario["mean"],
+                    linewidth=2,
+                    marker="o",
+                    markersize=3,
+                    label="Promedio diario predicho"
+                )
+                ax.plot(
+                    diario["fecha"],
+                    diario["max"],
+                    linewidth=2,
+                    marker="o",
+                    markersize=3,
+                    label="Máximo diario predicho"
+                )
+
+                ax.set_title("Predicción resumida por día")
+                ax.set_xlabel("Fecha")
+                ax.set_ylabel("Generación predicha")
+                ax.grid(True, alpha=0.25)
+                ax.legend(loc="upper right")
+
+            plt.xticks(rotation=45)
             plt.tight_layout()
             return fig
 

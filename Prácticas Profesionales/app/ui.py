@@ -1,4 +1,5 @@
 from shiny import ui
+from shinywidgets import output_widget
 
 
 def create_app_ui(df):
@@ -6,6 +7,10 @@ def create_app_ui(df):
     fecha_max = df["fecha_hora"].max().date()
 
     return ui.page_fluid(
+
+        ui.tags.link(rel="stylesheet", href="css/styles.css"),
+        ui.tags.script(src="js/app.js"),
+
         ui.h2("Sistema de Visualización y Predicción Energética"),
         ui.p("Monitoreo histórico del sistema fotovoltaico y variables climáticas."),
         ui.navset_tab(
@@ -37,18 +42,32 @@ def create_app_ui(df):
                             value=[0, 23],
                             step=1,
                         ),
+                        ui.input_select(
+                            "vista_energia",
+                            "Vista de energía",
+                            choices={
+                                "completa": "Serie completa",
+                                "promedio_diario": "Promedio diario",
+                                "maximo_diario": "Máximo diario",
+                                "ultimos_7": "Últimos 7 días",
+                                "ultimos_30": "Últimos 30 días",
+                            },
+
+                            selected="completa",
+                        ),
                         ui.input_action_button("btn_actualizar_energia", "Actualizar"),
                     ),
                     ui.card(
                         ui.card_header("Tabla de datos energéticos"),
-                        ui.div(
-                            ui.output_table("tabla_datos_energia"),
-                            style="overflow-y: auto; overflow-x: auto; max-height: 320px;",
-                        ),
+                            ui.output_data_frame("tabla_datos_energia"),
                     ),
                     ui.card(
                         ui.card_header("Serie temporal energética"),
                         ui.output_plot("grafica_energia"),
+                    ),
+                    ui.card(
+                        ui.card_header("Resumen diario de energía"),
+                        ui.output_plot("grafica_energia_diaria"),
                     ),
                 ),
             ),
@@ -81,10 +100,7 @@ def create_app_ui(df):
                     ),
                     ui.card(
                         ui.card_header("Tabla de datos climáticos"),
-                        ui.div(
-                            ui.output_table("tabla_datos_clima"),
-                            style="overflow-y: auto; overflow-x: auto; max-height: 320px;",
-                        ),
+                        ui.output_data_frame("tabla_datos_clima"),
                     ),
                     ui.card(
                         ui.card_header("Serie temporal climática"),
@@ -112,13 +128,13 @@ def create_app_ui(df):
                             min=1,
                             max=180,
                             step=1,
-                        )
+                        ),
+                        ui.input_action_button("btn_generar_prediccion", "Generar predicción"),
                     ),
                     ui.layout_columns(
                         ui.value_box("Modelo", ui.output_text("txt_modelo_activo")),
                         ui.value_box("Horizonte", ui.output_text("txt_horizonte_pred")),
-                        ui.value_box("Promedio predicho", ui.output_text("txt_promedio_pred")),
-                        ui.value_box("Total de generación predicha", ui.output_text("txt_total_pred")),
+                        ui.value_box("Promedio de generación predicha", ui.output_text("txt_promedio_pred")),                        ui.value_box("Total de generación predicha", ui.output_text("txt_total_pred")),
                     ),
                     ui.card(
                         ui.card_header("Estado del modelo"),
@@ -126,14 +142,16 @@ def create_app_ui(df):
                     ),
                     ui.card(
                         ui.card_header("Serie histórica y predicción"),
-                        ui.output_plot("grafica_prediccion"),
+                        output_widget("grafica_prediccion"),
+                    ),
+                    ui.card(
+                        ui.card_header("Predicción resumida por día"),
+                        ui.output_plot("grafica_prediccion_diaria"),
                     ),
                     ui.card(
                         ui.card_header("Vista tabular de predicción"),
-                        ui.div(
-                            ui.output_table("tabla_prediccion"),
-                            style="overflow-y: auto; overflow-x: auto; max-height: 320px;",
-                        ),
+                        ui.output_data_frame("tabla_prediccion"),
+
                     ),
                 ),
             ),
