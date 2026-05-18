@@ -8,7 +8,6 @@ from app.config import (
     COLUMNAS_ENERGIA,
     DATETIME_COLUMN,
     DEFAULT_PREDICTION_DAYS,
-    DEFAULT_TARIFF,
     TARGET_COLUMN,
 )
 from ml.economics import estimate_cost
@@ -117,8 +116,10 @@ def create_server(df, model=None, model_name="Random Forest"):
         # =========================
         @reactive.effect
         def _init_data():
+            """
             energia_actual.set(filtrar_energia())
             clima_actual.set(filtrar_clima())
+            """
             prediccion_actual.set(generar_prediccion())
 
         # =========================
@@ -170,7 +171,7 @@ def create_server(df, model=None, model_name="Random Forest"):
         @output
         @render.table
         def tabla_datos_energia():
-            return energia_actual().head(200)
+            return energia_actual()
 
         @output
         @render.plot
@@ -201,7 +202,7 @@ def create_server(df, model=None, model_name="Random Forest"):
         @output
         @render.table
         def tabla_datos_clima():
-            return clima_actual().head(200)
+            return clima_actual()
 
         @output
         @render.plot
@@ -253,20 +254,6 @@ def create_server(df, model=None, model_name="Random Forest"):
             if pred.empty:
                 return "N/D"
             return f"{pred['prediccion'].sum():.2f}"
-
-        @output
-        @render.text
-        def txt_tarifa_activa():
-            tarifa = input.tarifa_kwh() or DEFAULT_TARIFF
-            return f"${tarifa:.2f}"
-
-        @output
-        @render.text
-        def txt_costo_estimado():
-            pred = prediccion_actual()
-            tarifa = input.tarifa_kwh() or DEFAULT_TARIFF
-            resumen = estimate_cost(pred, tarifa)
-            return f"${resumen['costo_estimado']:.2f}"
 
         @output
         @render.text
@@ -337,12 +324,12 @@ def create_server(df, model=None, model_name="Random Forest"):
         @render.table
         def tabla_prediccion():
             pred = prediccion_actual().copy()
-            tarifa = input.tarifa_kwh() or DEFAULT_TARIFF
 
-            if not pred.empty:
-                pred["costo_estimado"] = pred["prediccion"] * tarifa
+            if pred.empty:
+                return pred
 
-            return pred.head(200)
+            pred = pred.rename(columns={"prediccion": "generacion_predicha"})
+            return pred
 
         @output
         @render.plot
@@ -374,9 +361,9 @@ def create_server(df, model=None, model_name="Random Forest"):
                     linewidth=1.6
                 )
 
-            ax.set_title("Histórico reciente y predicción")
+            ax.set_title("Histórico reciente y predicción de generación")
             ax.set_xlabel("Fecha y hora")
-            ax.set_ylabel(TARGET_COLUMN)
+            ax.set_ylabel("Generación")
             ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d %H:%M"))
             plt.xticks(rotation=45)
             ax.grid(True, alpha=0.3)

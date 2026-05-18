@@ -112,25 +112,13 @@ def create_app_ui(df):
                             min=1,
                             max=180,
                             step=1,
-                        ),
-                        ui.input_numeric(
-                            "tarifa_kwh",
-                            "Tarifa estimada por kWh:",
-                            value=1.25,
-                            min=0.0,
-                            step=0.01,
-                        ),
-                        ui.input_action_button("btn_generar_prediccion", "Generar predicción"),
+                        )
                     ),
                     ui.layout_columns(
                         ui.value_box("Modelo", ui.output_text("txt_modelo_activo")),
                         ui.value_box("Horizonte", ui.output_text("txt_horizonte_pred")),
                         ui.value_box("Promedio predicho", ui.output_text("txt_promedio_pred")),
-                        ui.value_box("Total estimado", ui.output_text("txt_total_pred")),
-                    ),
-                    ui.layout_columns(
-                        ui.value_box("Tarifa", ui.output_text("txt_tarifa_activa")),
-                        ui.value_box("Costo estimado", ui.output_text("txt_costo_estimado")),
+                        ui.value_box("Total de generación predicha", ui.output_text("txt_total_pred")),
                     ),
                     ui.card(
                         ui.card_header("Estado del modelo"),

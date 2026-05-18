@@ -7,7 +7,6 @@ MODEL_FILE = BASE_DIR / "models" / "random_forest_60d.joblib"
 TARGET_COLUMN = "valor (kWh)"
 DATETIME_COLUMN = "fecha_hora"
 DEFAULT_PREDICTION_DAYS = 60
-DEFAULT_TARIFF = 1.25  # Ajustable más adelante
 MODEL_NAME = "Random Forest"
 
 COLUMNAS_ENERGIA = [
