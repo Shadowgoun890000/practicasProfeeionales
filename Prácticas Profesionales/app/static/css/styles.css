@@ -144,7 +144,8 @@ textarea:focus,
 }
 
 /* Botones */
-button,
+.shiny-input-container button,
+button.btn,
 .btn,
 .btn-default {
     border-radius: 10px !important;
@@ -156,7 +157,8 @@ button,
     transition: all 0.2s ease-in-out;
 }
 
-button:hover,
+.shiny-input-container button:hover,
+button.btn:hover,
 .btn:hover,
 .btn-default:hover {
     background: var(--primary-soft) !important;

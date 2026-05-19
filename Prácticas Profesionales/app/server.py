@@ -223,92 +223,180 @@ def create_server(df, model=None, model_name="Random Forest"):
                 filters= False,
             )
 
+        @render.download(filename="energia_filtrada.csv")
+        def descargar_energia_csv():
+            df_out = energia_actual().drop(columns=["_fecha", "_hora"], errors="ignore").copy()
+            yield df_out.to_csv(index=False)
+
         @output
-        @render.plot
+        @render_widget
         def grafica_energia():
-            df_energia = energia_actual().drop(columns=["_fecha", "_hora"], errors="ignore")
+            df_energia = energia_actual().drop(columns=["_fecha", "_hora"], errors="ignore").copy()
             vista = input.vista_energia() or "completa"
-            fig, ax = plt.subplots(figsize=(11, 4.5))
+
+            fig = go.Figure()
 
             if df_energia.empty or TARGET_COLUMN not in df_energia.columns:
-                plt.tight_layout()
+                fig.update_layout(
+                    title="Serie temporal energética",
+                    template="plotly_white",
+                    height=430,
+                )
                 return fig
+
+            df_energia[DATETIME_COLUMN] = pd.to_datetime(df_energia[DATETIME_COLUMN], errors="coerce")
+            df_energia[TARGET_COLUMN] = pd.to_numeric(df_energia[TARGET_COLUMN], errors="coerce")
+            df_energia = df_energia.dropna(subset=[DATETIME_COLUMN, TARGET_COLUMN])
 
             df_vista = preparar_vista_energia(df_energia)
 
             if vista == "completa":
-                ax.plot(
-                    df_vista[DATETIME_COLUMN],
-                    df_vista[TARGET_COLUMN],
-                    linewidth=1.3,
-                    alpha=0.9,
-                    label="Generación observada"
+                fig.add_trace(
+                    go.Scatter(
+                        x=df_vista[DATETIME_COLUMN].tolist(),
+                        y=df_vista[TARGET_COLUMN].tolist(),
+                        mode="lines",
+                        name="Generación observada",
+                        line=dict(width=2, color="#2563eb"),
+                        hovertemplate=(
+                            "Fecha: %{x|%Y-%m-%d %H:%M}<br>"
+                            "Generación: %{y:.2f}<extra></extra>"
+                        ),
+                    )
                 )
-                ax.set_title("Serie temporal de la generación observada")
-                ax.set_xlabel("Fecha y hora")
-                ax.set_ylabel("Generación")
-                ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
-                plt.xticks(rotation=45)
+                titulo = "Serie temporal de la generación observada"
+                y_label = "Generación"
 
             elif vista == "ultimos_7":
-                ax.plot(
-                    df_vista[DATETIME_COLUMN],
-                    df_vista[TARGET_COLUMN],
-                    linewidth=1.5,
-                    alpha=0.95,
-                    label="Últimos 7 días"
+                fig.add_trace(
+                    go.Scatter(
+                        x=df_vista[DATETIME_COLUMN].tolist(),
+                        y=df_vista[TARGET_COLUMN].tolist(),
+                        mode="lines",
+                        name="Últimos 7 días",
+                        line=dict(width=2, color="#2563eb"),
+                        hovertemplate=(
+                            "Fecha: %{x|%Y-%m-%d %H:%M}<br>"
+                            "Generación: %{y:.2f}<extra></extra>"
+                        ),
+                    )
                 )
-                ax.set_title("Generación observada - últimos 7 días")
-                ax.set_xlabel("Fecha y hora")
-                ax.set_ylabel("Generación")
-                ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
-                plt.xticks(rotation=45)
+                titulo = "Generación observada - últimos 7 días"
+                y_label = "Generación"
 
             elif vista == "ultimos_30":
-                ax.plot(
-                    df_vista[DATETIME_COLUMN],
-                    df_vista[TARGET_COLUMN],
-                    linewidth=1.5,
-                    alpha=0.95,
-                    label="Últimos 30 días"
+                fig.add_trace(
+                    go.Scatter(
+                        x=df_vista[DATETIME_COLUMN].tolist(),
+                        y=df_vista[TARGET_COLUMN].tolist(),
+                        mode="lines",
+                        name="Últimos 30 días",
+                        line=dict(width=2, color="#2563eb"),
+                        hovertemplate=(
+                            "Fecha: %{x|%Y-%m-%d %H:%M}<br>"
+                            "Generación: %{y:.2f}<extra></extra>"
+                        ),
+                    )
                 )
-                ax.set_title("Generación observada - últimos 30 días")
-                ax.set_xlabel("Fecha y hora")
-                ax.set_ylabel("Generación")
-                ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
-                plt.xticks(rotation=45)
+                titulo = "Generación observada - últimos 30 días"
+                y_label = "Generación"
 
             elif vista == "promedio_diario":
-                ax.plot(
-                    df_vista["fecha"],
-                    df_vista["valor"],
-                    linewidth=2,
-                    marker="o",
-                    markersize=3,
-                    label="Promedio diario"
+                fig.add_trace(
+                    go.Scatter(
+                        x=df_vista["fecha"].tolist(),
+                        y=df_vista["valor"].tolist(),
+                        mode="lines+markers",
+                        name="Promedio diario",
+                        line=dict(width=2, color="#2563eb"),
+                        marker=dict(size=5),
+                        hovertemplate=(
+                            "Fecha: %{x}<br>"
+                            "Promedio diario: %{y:.2f}<extra></extra>"
+                        ),
+                    )
                 )
-                ax.set_title("Promedio diario de la generación")
-                ax.set_xlabel("Fecha")
-                ax.set_ylabel("Promedio diario")
-                plt.xticks(rotation=45)
+                titulo = "Promedio diario de la generación"
+                y_label = "Promedio diario"
 
             elif vista == "maximo_diario":
-                ax.plot(
-                    df_vista["fecha"],
-                    df_vista["valor"],
-                    linewidth=2,
-                    marker="o",
-                    markersize=3,
-                    label="Máximo diario"
+                fig.add_trace(
+                    go.Scatter(
+                        x=df_vista["fecha"].tolist(),
+                        y=df_vista["valor"].tolist(),
+                        mode="lines+markers",
+                        name="Máximo diario",
+                        line=dict(width=2, color="#2563eb"),
+                        marker=dict(size=5),
+                        hovertemplate=(
+                            "Fecha: %{x}<br>"
+                            "Máximo diario: %{y:.2f}<extra></extra>"
+                        ),
+                    )
                 )
-                ax.set_title("Máximo diario de la generación")
-                ax.set_xlabel("Fecha")
-                ax.set_ylabel("Máximo diario")
-                plt.xticks(rotation=45)
+                titulo = "Máximo diario de la generación"
+                y_label = "Máximo diario"
 
-            ax.grid(True, alpha=0.25)
-            ax.legend(loc="upper right")
-            plt.tight_layout()
+            else:
+                titulo = "Serie temporal energética"
+                y_label = "Generación"
+
+            fig.update_layout(
+                title=titulo,
+                xaxis_title="Fecha y hora" if vista in ["completa", "ultimos_7", "ultimos_30"] else "Fecha",
+                yaxis_title=y_label,
+                template="plotly_white",
+                height=430,
+                hovermode="x unified",
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.02,
+                    xanchor="right",
+                    x=1
+                ),
+                margin=dict(l=60, r=30, t=70, b=60),
+                modebar=dict(
+                    bgcolor="rgba(0,0,0,0)",
+                    color="#64748b",
+                    activecolor="#1d4ed8",
+                ),
+            )
+
+            if vista in ["completa", "ultimos_7", "ultimos_30"]:
+                fig.update_xaxes(
+                    type="date",
+                    tickformat="%Y-%m-%d",
+                    hoverformat="%Y-%m-%d %H:%M",
+                    showgrid=True,
+                    gridcolor="rgba(148,163,184,0.18)",
+                )
+            else:
+                fig.update_xaxes(
+                    showgrid=True,
+                    gridcolor="rgba(148,163,184,0.18)",
+                )
+
+            fig.update_yaxes(
+                showgrid=True,
+                gridcolor="rgba(148,163,184,0.18)",
+                zeroline=False,
+            )
+
+            fig._config = {
+                "displaylogo": False,
+                "responsive": True,
+                "modeBarButtonsToRemove": [
+                    "zoomIn2d",
+                    "zoomOut2d",
+                    "lasso2d",
+                    "select2d",
+                    "toggleSpikelines",
+                    "hoverClosestCartesian",
+                    "hoverCompareCartesian"
+                ]
+            }
+
             return fig
 
         @output
@@ -361,54 +449,97 @@ def create_server(df, model=None, model_name="Random Forest"):
                 summary= False,
                 filters=False,
             )
-        """
-        @output
-        @render.plot
-        def grafica_clima():
-            df_clima = clima_actual()
-            variable = input.variable_clima()
 
-            fig, ax = plt.subplots(figsize=(10, 4))
-
-            if variable in df_clima.columns and not df_clima.empty:
-                ax.plot(df_clima[DATETIME_COLUMN], df_clima[variable], label=variable)
-                ax.set_title(f"Serie temporal climática: {variable}")
-                ax.set_xlabel("Fecha y hora")
-                ax.set_ylabel(variable)
-                ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d %H:%M"))
-                plt.xticks(rotation=45)
-                ax.grid(True, alpha=0.3)
-                ax.legend()
-
-            plt.tight_layout()
-            return fig
-        """
+        @render.download(filename="clima_filtrado.csv")
+        def descargar_clima_csv():
+            df_out = clima_actual().drop(columns=["_fecha"], errors="ignore").copy()
+            yield df_out.to_csv(index=False)
 
         @output
-        @render.plot
+        @render_widget
         def grafica_clima():
-            df_clima = clima_actual().drop(columns=["_fecha"], errors="ignore")
+            df_clima = clima_actual().drop(columns=["_fecha"], errors="ignore").copy()
             variable = input.variable_clima()
 
-            fig, ax = plt.subplots(figsize=(11, 4.5))
+            fig = go.Figure()
 
-            if variable in df_clima.columns and not df_clima.empty:
-                ax.plot(
-                    df_clima[DATETIME_COLUMN],
-                    df_clima[variable],
-                    linewidth=1.5,
-                    alpha=0.9,
-                    label=variable.replace("_", " ").title()
+            if df_clima.empty or variable not in df_clima.columns:
+                fig.update_layout(
+                    title="Serie temporal climática",
+                    template="plotly_white",
+                    height=430,
                 )
-                ax.set_title(f"Serie temporal climática: {variable.replace('_', ' ').title()}")
-                ax.set_xlabel("Fecha y hora")
-                ax.set_ylabel(variable.replace("_", " ").title())
-                ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
-                plt.xticks(rotation=45)
-                ax.grid(True, alpha=0.25)
-                ax.legend(loc="upper right")
+                return fig
 
-            plt.tight_layout()
+            df_clima[DATETIME_COLUMN] = pd.to_datetime(df_clima[DATETIME_COLUMN], errors="coerce")
+            df_clima[variable] = pd.to_numeric(df_clima[variable], errors="coerce")
+            df_clima = df_clima.dropna(subset=[DATETIME_COLUMN, variable])
+
+            fig.add_trace(
+                go.Scatter(
+                    x=df_clima[DATETIME_COLUMN].tolist(),
+                    y=df_clima[variable].tolist(),
+                    mode="lines",
+                    name=variable.replace("_", " ").title(),
+                    line=dict(width=2, color="#2563eb"),
+                    hovertemplate=(
+                            "Fecha: %{x|%Y-%m-%d %H:%M}<br>"
+                            + f"{variable.replace('_', ' ').title()}: "
+                            + "%{y:.2f}<extra></extra>"
+                    ),
+                )
+            )
+
+            fig.update_layout(
+                title=f"Serie temporal climática: {variable.replace('_', ' ').title()}",
+                xaxis_title="Fecha y hora",
+                yaxis_title=variable.replace("_", " ").title(),
+                template="plotly_white",
+                height=430,
+                hovermode="x unified",
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.02,
+                    xanchor="right",
+                    x=1
+                ),
+                margin=dict(l=60, r=30, t=70, b=60),
+                modebar=dict(
+                    bgcolor="rgba(0,0,0,0)",
+                    color="#64748b",
+                    activecolor="#1d4ed8",
+                ),
+            )
+
+            fig.update_xaxes(
+                type="date",
+                tickformat="%Y-%m-%d",
+                hoverformat="%Y-%m-%d %H:%M",
+                showgrid=True,
+                gridcolor="rgba(148,163,184,0.18)",
+            )
+
+            fig.update_yaxes(
+                showgrid=True,
+                gridcolor="rgba(148,163,184,0.18)",
+                zeroline=False,
+            )
+
+            fig._config = {
+                "displaylogo": False,
+                "responsive": True,
+                "modeBarButtonsToRemove": [
+                    "zoomIn2d",
+                    "zoomOut2d",
+                    "lasso2d",
+                    "select2d",
+                    "toggleSpikelines",
+                    "hoverClosestCartesian",
+                    "hoverCompareCartesian"
+                ]
+            }
+
             return fig
 
         # =========================
@@ -529,48 +660,15 @@ def create_server(df, model=None, model_name="Random Forest"):
                 summary= False,
                 filters=False,
             )
-        """
-        @output
-        @render.plot
-        def grafica_prediccion():
-            pred = prediccion_actual()
-            dias_hist = input.dias_historia_pred() or 30
 
-            fig, ax = plt.subplots(figsize=(11, 5))
-
-            hist = df[[DATETIME_COLUMN, TARGET_COLUMN]].copy().sort_values(DATETIME_COLUMN)
-            hist = hist[
-                hist[DATETIME_COLUMN] >= hist[DATETIME_COLUMN].max() - pd.Timedelta(days=dias_hist)
-            ]
-
-            if not hist.empty:
-                ax.plot(
-                    hist[DATETIME_COLUMN],
-                    hist[TARGET_COLUMN],
-                    label="Histórico",
-                    linewidth=1.8
-                )
-
-            if not pred.empty:
-                ax.plot(
-                    pred[DATETIME_COLUMN],
-                    pred["prediccion"],
-                    label="Predicción",
-                    linestyle="--",
-                    linewidth=1.6
-                )
-
-            ax.set_title("Histórico reciente y predicción de generación")
-            ax.set_xlabel("Fecha y hora")
-            ax.set_ylabel("Generación")
-            ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d %H:%M"))
-            plt.xticks(rotation=45)
-            ax.grid(True, alpha=0.3)
-            ax.legend()
-
-            plt.tight_layout()
-            return fig
-        """
+        @render.download(filename="prediccion_generacion.csv")
+        def descargar_prediccion_csv():
+            pred = prediccion_actual().copy()
+            if pred.empty:
+                yield pd.DataFrame(columns=[DATETIME_COLUMN, "prediccion"]).to_csv(index=False)
+                return
+            pred = pred.rename(columns={"prediccion": "generacion_predicha"})
+            yield pred.to_csv(index=False)
 
         @output
         @render_widget
@@ -663,6 +761,11 @@ def create_server(df, model=None, model_name="Random Forest"):
                     x=1
                 ),
                 margin=dict(l=60, r=30, t=70, b=60),
+                modebar=dict(
+                    bgcolor="rgba(0,0,0,0)",
+                    color="#64748b",
+                    activecolor="#1d4ed8",
+                ),
             )
 
             fig.update_xaxes(

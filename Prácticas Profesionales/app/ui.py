@@ -56,6 +56,7 @@ def create_app_ui(df):
                             selected="completa",
                         ),
                         ui.input_action_button("btn_actualizar_energia", "Actualizar"),
+                        ui.download_button("descargar_energia_csv", "Descargar CSV"),
                     ),
                     ui.card(
                         ui.card_header("Tabla de datos energéticos"),
@@ -63,7 +64,7 @@ def create_app_ui(df):
                     ),
                     ui.card(
                         ui.card_header("Serie temporal energética"),
-                        ui.output_plot("grafica_energia"),
+                        output_widget("grafica_energia"),
                     ),
                     ui.card(
                         ui.card_header("Resumen diario de energía"),
@@ -97,6 +98,7 @@ def create_app_ui(df):
                             selected="air_temp",
                         ),
                         ui.input_action_button("btn_actualizar_clima", "Actualizar"),
+                        ui.download_button("descargar_clima_csv", "Descargar CSV"),
                     ),
                     ui.card(
                         ui.card_header("Tabla de datos climáticos"),
@@ -104,7 +106,7 @@ def create_app_ui(df):
                     ),
                     ui.card(
                         ui.card_header("Serie temporal climática"),
-                        ui.output_plot("grafica_clima"),
+                        output_widget("grafica_clima"),
                     ),
                 ),
             ),
@@ -130,6 +132,7 @@ def create_app_ui(df):
                             step=1,
                         ),
                         ui.input_action_button("btn_generar_prediccion", "Generar predicción"),
+                        ui.download_button("descargar_prediccion_csv", "Descargar CSV"),
                     ),
                     ui.layout_columns(
                         ui.value_box("Modelo", ui.output_text("txt_modelo_activo")),
