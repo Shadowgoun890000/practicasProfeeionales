@@ -1,27 +1,28 @@
-# ⚡ Sistema de Visualización y Predicción Energética con Machine Learning
+# ⚡ Sistema de Visualización y Predicción de Generación Energética con Machine Learning
 
-Proyecto académico orientado al análisis, integración, modelado y visualización de datos energéticos y climáticos de un sistema fotovoltaico, utilizando técnicas de **Machine Learning** para la predicción del comportamiento energético del sistema.
+Proyecto académico orientado al análisis, integración, modelado y visualización de datos energéticos y climáticos de un sistema fotovoltaico, utilizando técnicas de **Machine Learning** para la predicción de la **generación energética** del sistema.
 
 ---
 
 ## 📌 Descripción general
 
-Este proyecto integra múltiples fuentes de datos para construir un pipeline completo de análisis energético:
+Este proyecto integra múltiples fuentes de datos para construir un pipeline completo de análisis y predicción de generación fotovoltaica:
 
 - extracción de datos de generación fotovoltaica desde archivos JSON de **Growatt**,
 - extracción y procesamiento de datos climáticos,
 - homogenización temporal de ambas fuentes,
-- evaluación de múltiples estrategias de validación para modelos predictivos,
+- generación de variables temporales derivadas,
+- evaluación de estrategias de validación para modelos predictivos,
 - selección de un modelo final basado en **Random Forest**,
-- implementación de una aplicación interactiva en **Python Shiny** para visualización histórica y predicción.
+- implementación de una aplicación interactiva en **Python Shiny** para visualización histórica, consulta climática y predicción.
 
-El sistema fue diseñado como una plataforma experimental para comparar distintos modelos de series temporales y aprendizaje supervisado aplicados al comportamiento energético de un sistema fotovoltaico.
+El sistema fue diseñado como una plataforma académica y experimental para el estudio del comportamiento de la **generación de energía** de un sistema fotovoltaico, así como para la consulta de resultados mediante una interfaz gráfica funcional.
 
 ---
 
 ## 🎯 Objetivo del proyecto
 
-Desarrollar y evaluar un sistema de predicción energética basado en variables climáticas, temporales y operativas de un sistema fotovoltaico, con el fin de estimar el comportamiento futuro de la señal energética registrada y visualizar los resultados mediante una aplicación interactiva.
+Desarrollar y evaluar un sistema de predicción de la **generación de energía** de un sistema fotovoltaico a partir de variables históricas energéticas, meteorológicas y temporales, con el fin de estimar el comportamiento futuro de la señal registrada y visualizar los resultados mediante una aplicación interactiva.
 
 ---
 
@@ -60,7 +61,8 @@ Los datos climáticos también fueron trabajados a resolución temporal de **5 m
 La variable objetivo utilizada en el modelado corresponde a la señal energética del sistema fotovoltaico registrada en el dataset homogenizado.
 
 > **Importante:**  
-> El modelo final predice el comportamiento energético o **generación del sistema fotovoltaico**, no el consumo facturable de la vivienda.
+> El modelo y la aplicación están orientados a la **generación energética del sistema fotovoltaico**.  
+> No se trata de un modelo de consumo facturable de la vivienda ni de estimación directa del recibo eléctrico.
 
 ---
 
@@ -83,12 +85,14 @@ practicasProfeeionales/
 │   ├── JSON/
 │   ├── ml/
 │   ├── models/
-│   ├── Templates/
+│   ├── static/
 │   └── App.py
 │
 ├── .gitattributes
 └── .gitignore
 ```
+
+La aplicación principal se ejecuta desde `App.py`, el cual importa el objeto `app` desde `app.main`.
 
 ---
 
@@ -98,18 +102,19 @@ practicasProfeeionales/
 Contiene la lógica principal de la aplicación en **Python Shiny**.
 
 Archivos principales:
-- `config.py` → configuración global de la app
-- `main.py` → inicialización de la app
-- `server.py` → lógica reactiva del servidor
+- `config.py` → configuración global de la app, rutas, columnas y constantes
+- `main.py` → carga de datos, preparación de features e inicialización de la app
+- `server.py` → lógica reactiva del servidor, filtros, tablas, gráficas, predicción y exportaciones
 - `ui.py` → construcción de la interfaz gráfica
+- `static/` → recursos estáticos como CSS y JavaScript para estilos e interacción
 
 ### `data/`
 Contiene utilidades relacionadas con la carga y transformación de datos.
 
 Archivos principales:
-- `loader.py` → carga del dataset principal
-- `features.py` → generación de variables derivadas
-- `merge.py` → integración de datos
+- `loader.py` → carga del dataset principal desde `Resultado_Homogenizado.xlsx`
+- `features.py` → generación de variables temporales derivadas
+- `merge.py` → integración de datos en etapas previas del proyecto
 
 ### `Dataframe/`
 Incluye scripts de preprocesamiento, análisis exploratorio y construcción del dataset final.
@@ -121,10 +126,7 @@ Archivos principales:
 - `series_temporales.py`
 - `Código_Fuente_CostosdeConsumo.py`
 
-También contiene figuras generadas para análisis temporal:
-- `analisis_completo_estacionalidad.png`
-- `serie_temporal_patron_diario.png`
-- `serie_temporal_tesis.png`
+También contiene figuras generadas para análisis temporal, utilizadas como apoyo durante la etapa exploratoria.
 
 ### `IA's/`
 Contiene el bloque principal de experimentación y entrenamiento.
@@ -143,7 +145,8 @@ Incluye el script de entrenamiento final del modelo seleccionado:
 Almacena los archivos fuente crudos:
 - datos climáticos,
 - datos Growatt,
-- y archivos derivados intermedios.
+- archivos derivados intermedios,
+- y el archivo homogenizado final utilizado por la aplicación.
 
 ### `ml/`
 Contiene la lógica específica del modelo de Machine Learning.
@@ -151,9 +154,9 @@ Contiene la lógica específica del modelo de Machine Learning.
 Archivos principales:
 - `schema.py` → definición de variables de entrada del modelo
 - `model_loader.py` → carga del modelo serializado
-- `predictor.py` → preparación de entrada para inferencia
-- `forecast.py` → generación de horizonte futuro
-- `economics.py` → estimación económica simple
+- `predictor.py` → construcción de entradas para inferencia
+- `forecast.py` → generación de horizonte futuro y pronóstico con el modelo
+- `economics.py` → módulo auxiliar de estimación económica simple, no integrado actualmente en el flujo principal de la interfaz
 
 ### `models/`
 Contiene los modelos serializados entrenados, por ejemplo:
@@ -170,39 +173,34 @@ El flujo general del proyecto es el siguiente:
    - lectura de archivos JSON de Growatt.
 
 2. **Preprocesamiento**
-   - transformación de timestamps,
+   - transformación de marcas temporales,
    - limpieza y selección de variables,
    - unificación de frecuencia temporal.
 
 3. **Homogenización**
    - integración de clima y generación en un solo dataset,
-   - construcción de `Resultado_Homogenizado.xlsx`.
+   - construcción del archivo `Resultado_Homogenizado.xlsx`.
 
 4. **Ingeniería de características**
    - variables temporales:
-     - hora
-     - día de la semana
-     - fin de semana
-     - mes
-     - estación
+     - `hora`
+     - `dia_semana`
+     - `es_fin_semana`
+     - `mes`
+     - `estacion`
 
 5. **Entrenamiento y evaluación**
-   - comparación de varios modelos:
-     - ARIMA
-     - Prophet
-     - Random Forest
+   - comparación de varios modelos y enfoques de validación.
 
-6. **Estrategias de validación**
-   - K-Fold temporal
-   - TimeSeriesSplit
-   - Train-Test Split por periodos
-   - Train-Test Variable por periodos
+6. **Selección del modelo final**
+   - **Random Forest** fue seleccionado como modelo principal por su desempeño global.
 
-7. **Selección del modelo final**
-   - Random Forest fue seleccionado por su mejor desempeño global.
-
-8. **Despliegue**
-   - integración del modelo entrenado en una aplicación Shiny.
+7. **Despliegue**
+   - integración del modelo entrenado en una aplicación Shiny,
+   - consulta de datos históricos,
+   - visualización climática,
+   - generación de predicciones,
+   - exportación de resultados.
 
 ---
 
@@ -223,14 +221,18 @@ Modelo de aprendizaje supervisado basado en árboles de decisión, seleccionado 
 
 ## 🏆 Modelo final seleccionado
 
-El modelo final del proyecto es un **Random Forest Regressor** entrenado con variables:
+El modelo final del proyecto es un **Random Forest Regressor**, integrado en la aplicación como modelo principal de predicción. El sistema también contempla un modo provisional basado en patrón histórico reciente cuando el modelo serializado no está disponible o cuando ocurre una falla durante la inferencia.
 
-### Variables operativas del sistema
+### Variables utilizadas por el modelo
+
+De acuerdo con el esquema definido para inferencia, el modelo emplea variables como:
+
+#### Variables energéticas
 - `eToday (kWh)`
 - `eTotal (kWh)`
 - `power (kW)`
 
-### Variables meteorológicas
+#### Variables meteorológicas
 - `air_temp`
 - `relative_humidity`
 - `ghi`
@@ -239,7 +241,7 @@ El modelo final del proyecto es un **Random Forest Regressor** entrenado con var
 - `wind_speed_10m`
 - `wind_direction_10m`
 
-### Variables temporales
+#### Variables temporales
 - `hora`
 - `dia_semana`
 - `es_fin_semana`
@@ -257,15 +259,62 @@ La aplicación permite:
 - visualizar datos históricos energéticos,
 - visualizar variables climáticas,
 - generar predicciones futuras con el modelo entrenado,
-- mostrar métricas del modelo cargado,
-- estimar una traducción económica simple del horizonte predicho.
+- mostrar el estado del modelo cargado,
+- exportar resultados en formato CSV.
+
+### Tecnologías utilizadas en la aplicación
+
+- **Python** como lenguaje principal
+- **Shiny for Python** para la interfaz y la lógica reactiva
+- **Plotly** para gráficas interactivas
+- **Matplotlib** para algunas visualizaciones complementarias
+- **Pandas** para procesamiento tabular y manipulación de datos
+- **shinywidgets** para integrar componentes interactivos en la interfaz
 
 ### Módulos principales de la app
-- **Resumen**
-- **Histórico energético**
-- **Clima**
-- **Predicción**
-- **Información del modelo**
+
+#### **Resumen**
+Presenta indicadores generales del conjunto de datos:
+- total de registros,
+- fecha inicial,
+- fecha final,
+- valor máximo.
+
+#### **Histórico energético**
+Permite:
+- filtrar por rango de fechas,
+- filtrar por rango horario,
+- seleccionar la vista de energía:
+  - serie completa,
+  - promedio diario,
+  - máximo diario,
+  - últimos 7 días,
+  - últimos 30 días,
+- consultar tabla de datos,
+- visualizar gráfica interactiva,
+- descargar resultados filtrados en CSV.
+
+#### **Clima**
+Permite:
+- filtrar por rango de fechas,
+- seleccionar una variable climática,
+- consultar la tabla correspondiente,
+- visualizar la serie temporal de la variable,
+- descargar resultados filtrados en CSV.
+
+#### **Predicción**
+Permite:
+- definir el horizonte de predicción,
+- seleccionar la cantidad de días históricos a mostrar,
+- generar predicciones futuras,
+- comparar histórico reciente frente a predicción,
+- consultar el estado del modelo,
+- visualizar una predicción resumida por día,
+- revisar la tabla de predicciones,
+- descargar resultados en CSV.
+
+#### **Acerca de**
+Incluye una breve descripción del propósito general de la aplicación.
 
 ---
 
@@ -289,6 +338,8 @@ python "Prácticas Profesionales/IA's/IA_Main/train_random_forest_final.py"
 python "Prácticas Profesionales/App.py"
 ```
 
+`App.py` importa el objeto `app` desde `app.main` y ejecuta la aplicación principal.
+
 ---
 
 ## 📦 Dependencias principales
@@ -296,14 +347,15 @@ python "Prácticas Profesionales/App.py"
 Este proyecto utiliza principalmente:
 
 - `pandas`
-- `numpy`
 - `matplotlib`
+- `plotly`
 - `scikit-learn`
-- `statsmodels`
-- `prophet`
 - `joblib`
 - `shiny`
+- `shinywidgets`
 - `openpyxl`
+
+Dependencias adicionales del proyecto experimental incluyen librerías como `statsmodels` y `prophet`, utilizadas en la etapa comparativa de modelos.
 
 ---
 
@@ -313,9 +365,21 @@ Las estrategias evaluadas mostraron que:
 
 - **ARIMA** presenta limitaciones para reproducir adecuadamente la variabilidad observada.
 - **Prophet** puede capturar parte de la estructura temporal, pero degrada su desempeño en horizontes largos.
-- **Random Forest** mostró el mejor equilibrio entre error bajo, estabilidad y capacidad de ajuste.
+- **Random Forest** mostró el mejor equilibrio entre error, estabilidad y capacidad de ajuste.
 
-Por esta razón, **Random Forest** fue seleccionado como el modelo final para la app.
+Por esta razón, **Random Forest** fue seleccionado como el modelo final integrado en la aplicación.
+
+---
+
+## 📤 Exportación de resultados
+
+La aplicación permite descargar archivos CSV generados a partir de la información filtrada o predicha en las secciones de:
+
+- histórico energético,
+- clima,
+- predicción.
+
+Estas exportaciones facilitan el análisis posterior de resultados fuera de la interfaz principal.
 
 ---
 
@@ -323,24 +387,33 @@ Por esta razón, **Random Forest** fue seleccionado como el modelo final para la
 
 - El modelo actual trabaja sobre la señal energética o **generación del sistema fotovoltaico**.
 - No predice directamente el **consumo facturable** de la vivienda.
-- La estimación económica implementada en la app es una aproximación simple.
-- Para modelar consumo real o recibo eléctrico, sería necesario construir un dataset específico con variables objetivo de consumo facturable.
+- La calidad de la predicción depende de la consistencia del dataset histórico y de la disponibilidad de variables explicativas.
+- Existe un módulo económico auxiliar en el proyecto, pero no forma parte del flujo principal actual de la interfaz.
 
 ---
 
 ## 🚀 Trabajo futuro
 
-- incorporar una conversión energética más rigurosa de **W a kWh** en la app,
-- integrar análisis bimestral basado en recibos CFE,
-- construir un modelo específico para consumo facturable,
-- mejorar la visualización y modularización de la aplicación,
-- agregar exportación de resultados y reportes.
+- incorporar indicadores clave de desempeño (KPIs),
+- generar reportes automatizados,
+- ampliar mecanismos de exportación,
+- comparar predicción contra valores observados futuros,
+- fortalecer la actualización continua de datos,
+- evaluar modelos adicionales de series temporales y aprendizaje profundo,
+- seguir mejorando la modularización y visualización de la aplicación.
 
 ---
 
 ## 📍 Estado del proyecto
 
-Proyecto académico funcional en fase de consolidación, con modelo final entrenado e integración en aplicación interactiva para visualización y predicción energética.
+Proyecto académico funcional en fase de consolidación, con:
+
+- modelo final entrenado e integrado,
+- visualización histórica y climática,
+- generación de predicciones,
+- gráficas interactivas,
+- tablas de consulta,
+- exportación CSV por módulo.
 
 ---
 
