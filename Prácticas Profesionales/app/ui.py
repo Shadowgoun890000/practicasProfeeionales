@@ -12,7 +12,10 @@ def create_app_ui(df):
         ui.tags.script(src="js/app.js"),
 
         ui.h2("Sistema de Visualización y Predicción Energética"),
-        ui.p("Monitoreo histórico del sistema fotovoltaico y variables climáticas."),
+        ui.p(
+            "Consulta histórica del sistema fotovoltaico "
+            "y variables meteorológicas."
+        ),
         ui.navset_tab(
             ui.nav_panel(
                 "Resumen",
@@ -76,7 +79,7 @@ def create_app_ui(df):
                 "Clima",
                 ui.layout_sidebar(
                     ui.sidebar(
-                        ui.h4("Filtros de clima"),
+                        ui.h4("Filtros meteorológicos"),
                         ui.input_date_range(
                             "rango_fechas_clima",
                             "Selecciona el rango de fechas:",
@@ -85,7 +88,7 @@ def create_app_ui(df):
                         ),
                         ui.input_select(
                             "variable_clima",
-                            "Variable climática:",
+                            "Variable meteorológica:",
                             choices=[
                                 "air_temp",
                                 "relative_humidity",
@@ -101,11 +104,11 @@ def create_app_ui(df):
                         ui.download_button("descargar_clima_csv", "Descargar CSV"),
                     ),
                     ui.card(
-                        ui.card_header("Tabla de datos climáticos"),
+                        ui.card_header("Tabla de datos meteorológicos"),
                         ui.output_data_frame("tabla_datos_clima"),
                     ),
                     ui.card(
-                        ui.card_header("Serie temporal climática"),
+                        ui.card_header("Serie temporal meteorológica"),
                         output_widget("grafica_clima"),
                     ),
                 ),
@@ -115,6 +118,16 @@ def create_app_ui(df):
                 ui.layout_sidebar(
                     ui.sidebar(
                         ui.h4("Configuración de predicción"),
+                        ui.input_file(
+                            "archivo_meteo_futuro",
+                            "Datos meteorológicos futuros:",
+                            accept=[
+                                ".csv",
+                                ".xlsx",
+                                ".xls",
+                            ],
+                            multiple=False,
+                        ),
                         ui.input_numeric(
                             "dias_prediccion",
                             "Horizonte (días):",
@@ -137,7 +150,8 @@ def create_app_ui(df):
                     ui.layout_columns(
                         ui.value_box("Modelo", ui.output_text("txt_modelo_activo")),
                         ui.value_box("Horizonte", ui.output_text("txt_horizonte_pred")),
-                        ui.value_box("Promedio de generación predicha", ui.output_text("txt_promedio_pred")),                        ui.value_box("Total de generación predicha", ui.output_text("txt_total_pred")),
+                        ui.value_box("Potencia promedio predicha", ui.output_text("txt_promedio_pred")),
+                        ui.value_box("Energía estimada del periodo", ui.output_text("txt_total_pred")),
                     ),
                     ui.card(
                         ui.card_header("Estado del modelo"),

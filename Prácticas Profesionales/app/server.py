@@ -17,6 +17,22 @@ from ml.forecast import forecast_with_model
 
 
 def create_server(df, model=None, model_name="Random Forest"):
+
+    def limpiar_nombres_tabla(dataframe: pd.DataFrame) -> pd.DataFrame:
+
+        tabla = dataframe.copy()
+
+        tabla.columns = (
+            tabla.columns
+            .str.replace(
+                r"\s*\([^)]*\)$",
+                "",
+                regex=True
+            )
+        )
+
+        return tabla
+
     def server(input, output, session):
         columnas_energia_disponibles = [c for c in COLUMNAS_ENERGIA if c in df.columns]
         columnas_clima_disponibles = [c for c in COLUMNAS_CLIMA if c in df.columns]
@@ -48,6 +64,29 @@ def create_server(df, model=None, model_name="Random Forest"):
         # =========================
         # Funciones auxiliares
         # =========================
+        def calcular_energia_kwh(pred: pd.DataFrame) -> float:
+            """
+            Convierte las predicciones de potencia instantánea en W,
+            registradas cada cinco minutos, a energía acumulada en kWh.
+            """
+            if pred.empty or "prediccion" not in pred.columns:
+                return 0.0
+
+            potencia = pd.to_numeric(
+                pred["prediccion"],
+                errors="coerce"
+            ).fillna(0)
+
+            intervalo_horas = 5 / 60
+
+            energia_kwh = (
+                    potencia.sum()
+                    * intervalo_horas
+                    / 1000
+            )
+
+            return float(energia_kwh)
+
         def filtrar_energia():
             inicio, fin = input.rango_fechas_energia()
             hora_inicio, hora_fin = input.hora_rango_energia()
@@ -215,14 +254,23 @@ def create_server(df, model=None, model_name="Random Forest"):
         @output
         @render.data_frame
         def tabla_datos_energia():
-            return render.DataGrid(
-                energia_actual(),
-                width="100%",
-                height="420px",
-                summary= False,
-                filters= False,
+
+            tabla = energia_actual().copy()
+
+            tabla = tabla.drop(
+                columns=["_fecha", "_hora"],
+                errors="ignore"
             )
 
+            tabla = limpiar_nombres_tabla(tabla)
+
+            return render.DataGrid(
+                tabla,
+                width="100%",
+                height="420px",
+                summary=False,
+                filters=False,
+            )
         @render.download(filename="energia_filtrada.csv")
         def descargar_energia_csv():
             df_out = energia_actual().drop(columns=["_fecha", "_hora"], errors="ignore").copy()
@@ -256,16 +304,16 @@ def create_server(df, model=None, model_name="Random Forest"):
                         x=df_vista[DATETIME_COLUMN].tolist(),
                         y=df_vista[TARGET_COLUMN].tolist(),
                         mode="lines",
-                        name="Generación observada",
+                        name="Potencia observada",
                         line=dict(width=2, color="#2563eb"),
                         hovertemplate=(
                             "Fecha: %{x|%Y-%m-%d %H:%M}<br>"
-                            "Generación: %{y:.2f}<extra></extra>"
+                            "Potencia: %{y:.2f} W<extra></extra>"
                         ),
                     )
                 )
-                titulo = "Serie temporal de la generación observada"
-                y_label = "Generación"
+                titulo = "Serie temporal de la potencia fotovoltaica"
+                y_label = "Potencia (W)"
 
             elif vista == "ultimos_7":
                 fig.add_trace(
@@ -277,12 +325,12 @@ def create_server(df, model=None, model_name="Random Forest"):
                         line=dict(width=2, color="#2563eb"),
                         hovertemplate=(
                             "Fecha: %{x|%Y-%m-%d %H:%M}<br>"
-                            "Generación: %{y:.2f}<extra></extra>"
+                            "Potencia: %{y:.2f} W<extra></extra>"
                         ),
                     )
                 )
-                titulo = "Generación observada - últimos 7 días"
-                y_label = "Generación"
+                titulo = "Potencia fotovoltaica observada - últimos 7 días"
+                y_label = "Potencia (W)"
 
             elif vista == "ultimos_30":
                 fig.add_trace(
@@ -294,12 +342,12 @@ def create_server(df, model=None, model_name="Random Forest"):
                         line=dict(width=2, color="#2563eb"),
                         hovertemplate=(
                             "Fecha: %{x|%Y-%m-%d %H:%M}<br>"
-                            "Generación: %{y:.2f}<extra></extra>"
+                            "Potencia: %{y:.2f} W<extra></extra>"
                         ),
                     )
                 )
-                titulo = "Generación observada - últimos 30 días"
-                y_label = "Generación"
+                titulo = "Potencia fotovoltaica observada - últimos 30 días"
+                y_label = "Potencia (W)"
 
             elif vista == "promedio_diario":
                 fig.add_trace(
@@ -307,17 +355,17 @@ def create_server(df, model=None, model_name="Random Forest"):
                         x=df_vista["fecha"].tolist(),
                         y=df_vista["valor"].tolist(),
                         mode="lines+markers",
-                        name="Promedio diario",
+                        name="Potencia promedio diaria",
                         line=dict(width=2, color="#2563eb"),
                         marker=dict(size=5),
                         hovertemplate=(
                             "Fecha: %{x}<br>"
-                            "Promedio diario: %{y:.2f}<extra></extra>"
+                            "Potencia promedio: %{y:.2f} W<extra></extra>"
                         ),
                     )
                 )
-                titulo = "Promedio diario de la generación"
-                y_label = "Promedio diario"
+                titulo = "Potencia promedio diaria"
+                y_label = "Potencia (W)"
 
             elif vista == "maximo_diario":
                 fig.add_trace(
@@ -426,9 +474,9 @@ def create_server(df, model=None, model_name="Random Forest"):
                     label="Máximo diario"
                 )
 
-                ax.set_title("Resumen diario de la generación")
+                ax.set_title("Resumen diario de la potencia fotovoltaica")
                 ax.set_xlabel("Fecha")
-                ax.set_ylabel("Generación")
+                ax.set_ylabel("Potencia (W)")
                 ax.grid(True, alpha=0.25)
                 ax.legend(loc="upper right")
 
@@ -560,17 +608,28 @@ def create_server(df, model=None, model_name="Random Forest"):
         @render.text
         def txt_promedio_pred():
             pred = prediccion_actual()
+
             if pred.empty:
                 return "N/D"
-            return f"{pred['prediccion'].mean():.2f}"
+
+            promedio = pd.to_numeric(
+                pred["prediccion"],
+                errors="coerce"
+            ).mean()
+
+            return f"{promedio:.2f} W"
 
         @output
         @render.text
         def txt_total_pred():
             pred = prediccion_actual()
+
             if pred.empty:
                 return "N/D"
-            return f"{pred['prediccion'].sum():.2f}"
+
+            energia = calcular_energia_kwh(pred)
+
+            return f"{energia:.2f} kWh"
 
         @output
         @render.text
@@ -651,7 +710,7 @@ def create_server(df, model=None, model_name="Random Forest"):
             if pred.empty:
                 return render.DataGrid(pd.DataFrame(), width="100%", height="420px")
 
-            pred = pred.rename(columns={"prediccion": "generacion_predicha"})
+            pred = pred.rename(columns={"prediccion": "potencia_predicha"})
 
             return render.DataGrid(
                 pred,
@@ -667,7 +726,7 @@ def create_server(df, model=None, model_name="Random Forest"):
             if pred.empty:
                 yield pd.DataFrame(columns=[DATETIME_COLUMN, "prediccion"]).to_csv(index=False)
                 return
-            pred = pred.rename(columns={"prediccion": "generacion_predicha"})
+            pred = pred.rename(columns={"prediccion": "potencia_predicha"})
             yield pred.to_csv(index=False)
 
         @output
@@ -701,11 +760,11 @@ def create_server(df, model=None, model_name="Random Forest"):
                         x=hist[DATETIME_COLUMN].tolist(),
                         y=hist[TARGET_COLUMN].tolist(),
                         mode="lines",
-                        name="Histórico",
+                        name="Potencia Historica",
                         line=dict(width=2, color="#2563eb"),
                         hovertemplate=(
                             "Fecha: %{x|%Y-%m-%d %H:%M}<br>"
-                            "Generación: %{y:.2f}<extra></extra>"
+                            "Potencia: %{y:.2f} W<extra></extra>"
                         ),
                     )
                 )
@@ -737,19 +796,19 @@ def create_server(df, model=None, model_name="Random Forest"):
                         x=pred[DATETIME_COLUMN].tolist(),
                         y=pred["prediccion"].tolist(),
                         mode="lines",
-                        name="Predicción",
+                        name="Potencia predicha",
                         line=dict(width=2, dash="dash", color="#f97316"),
                         hovertemplate=(
                             "Fecha: %{x|%Y-%m-%d %H:%M}<br>"
-                            "Predicción: %{y:.2f}<extra></extra>"
+                            "Potencia predicha: %{y:.2f} W<extra></extra>"
                         ),
                     )
                 )
 
             fig.update_layout(
-                title="Histórico reciente y predicción de generación",
+                title="Histórico reciente y predicción de potencia fotovoltaica",
                 xaxis_title="Fecha y hora",
-                yaxis_title="Generación",
+                yaxis_title="Potencia (W)",
                 template="plotly_white",
                 height=460,
                 hovermode="x unified",
@@ -800,7 +859,7 @@ def create_server(df, model=None, model_name="Random Forest"):
                     linewidth=2,
                     marker="o",
                     markersize=3,
-                    label="Promedio diario predicho"
+                    label="Potencia promedio diaria"
                 )
                 ax.plot(
                     diario["fecha"],
@@ -808,12 +867,12 @@ def create_server(df, model=None, model_name="Random Forest"):
                     linewidth=2,
                     marker="o",
                     markersize=3,
-                    label="Máximo diario predicho"
+                    label="Potencia máxima diaria"
                 )
 
-                ax.set_title("Predicción resumida por día")
+                ax.set_title("Resumen diario de la potencia predicha")
                 ax.set_xlabel("Fecha")
-                ax.set_ylabel("Generación predicha")
+                ax.set_ylabel("Potencia (W)")
                 ax.grid(True, alpha=0.25)
                 ax.legend(loc="upper right")
 

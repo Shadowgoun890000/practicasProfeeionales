@@ -1,1 +1,11 @@
 *.joblib
+
+.idea/
+__pycache__/
+*.pyc
+.venv/
+
+.idea/
+__pycache__/
+*.pyc
+.venv/

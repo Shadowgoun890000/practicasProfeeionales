@@ -103,7 +103,7 @@ datos_recientes = df[df['fecha_hora'] >= fecha_limite]
 ax1.plot(datos_recientes['fecha_hora'], datos_recientes['potencia_kW'],
          linewidth=1.5, color='steelblue', alpha=0.8)
 ax1.set_xlabel('Fecha y Hora', fontsize=12)
-ax1.set_ylabel('Potencia (kW)', fontsize=12)
+ax1.set_ylabel('Potencia (W)', fontsize=12)
 ax1.set_title(f'Serie Temporal de Potencia Generada (Últimos {ultimos_dias} días)', fontsize=14, pad=20)
 ax1.grid(True, alpha=0.3)
 ax1.xaxis.set_major_formatter(mdates.DateFormatter('%d-%m\n%H:%M'))
@@ -130,7 +130,7 @@ ax2.bar(potencia_por_hora['hora'], potencia_por_hora['mean'],
         yerr=potencia_por_hora['std'],
         capsize=5, alpha=0.7, color='coral', edgecolor='darkred')
 ax2.set_xlabel('Hora del Día', fontsize=12)
-ax2.set_ylabel('Potencia Promedio (kW)', fontsize=12)
+ax2.set_ylabel('Potencia Promedio (W)', fontsize=12)
 ax2.set_title('Patrón Diario de Generación (Promedio por Hora)', fontsize=14, pad=20)
 ax2.set_xticks(range(0, 24, 2))
 ax2.grid(True, alpha=0.3, axis='y')
@@ -228,7 +228,7 @@ if len(dias_con_patron['fecha'].unique()) >= 2:
             current_date += timedelta(days=1)
 
         ax3.set_xlabel('Tiempo', fontsize=14)
-        ax3.set_ylabel('Potencia (kW)', fontsize=14)
+        ax3.set_ylabel('Potencia (W)', fontsize=14)
         ax3.set_title('Serie Temporal de la Potencia Generada (muestra representativa)',
                       fontsize=16, pad=20)
         ax3.grid(True, alpha=0.3, linestyle='--')
@@ -254,7 +254,7 @@ fig3, ((ax4, ax5), (ax6, ax7)) = plt.subplots(2, 2, figsize=(16, 12))
 
 # 5a. Distribución de la potencia
 ax4.hist(df['potencia_kW'].dropna(), bins=50, edgecolor='black', alpha=0.7, color='lightseagreen')
-ax4.set_xlabel('Potencia (kW)', fontsize=12)
+ax4.set_xlabel('Potencia (W)', fontsize=12)
 ax4.set_ylabel('Frecuencia', fontsize=12)
 ax4.set_title('Distribución de Valores de Potencia', fontsize=14)
 ax4.grid(True, alpha=0.3)
@@ -267,7 +267,7 @@ ax5.bar(range(7), potencia_por_dia_semana['mean'],
         yerr=potencia_por_dia_semana['std'], capsize=8,
         color=plt.cm.Set3(range(7)), edgecolor='black')
 ax5.set_xlabel('Día de la Semana', fontsize=12)
-ax5.set_ylabel('Potencia Promedio (kW)', fontsize=12)
+ax5.set_ylabel('Potencia Promedio (W)', fontsize=12)
 ax5.set_title('Generación por Día de la Semana', fontsize=14)
 ax5.set_xticks(range(7))
 ax5.set_xticklabels(dias_semana, rotation=45)
@@ -278,7 +278,7 @@ df_diario = df.set_index('fecha_hora')['potencia_kW'].resample('D').mean()
 
 ax6.plot(df_diario.index, df_diario.values, linewidth=2, color='darkgreen', alpha=0.8)
 ax6.set_xlabel('Fecha', fontsize=12)
-ax6.set_ylabel('Potencia Promedio Diaria (kW)', fontsize=12)
+ax6.set_ylabel('Potencia Promedio Diaria (W)', fontsize=12)
 ax6.set_title('Tendencia Temporal (Resample Diario)', fontsize=14)
 ax6.grid(True, alpha=0.3)
 ax6.xaxis.set_major_formatter(mdates.DateFormatter('%d-%m-%Y'))
@@ -291,7 +291,7 @@ ax7.boxplot(boxplot_data, positions=range(24), widths=0.6,
             boxprops=dict(facecolor='lightblue', color='darkblue'),
             medianprops=dict(color='red'))
 ax7.set_xlabel('Hora del Día', fontsize=12)
-ax7.set_ylabel('Potencia (kW)', fontsize=12)
+ax7.set_ylabel('Potencia (W)', fontsize=12)
 ax7.set_title('Variabilidad por Hora', fontsize=14)
 ax7.set_xticks(range(0, 24, 2))
 ax7.grid(True, alpha=0.3, axis='y')

@@ -1,374 +1,541 @@
-import pandas as pd
+import warnings
+warnings.filterwarnings("ignore")
+
 import numpy as np
-from statsmodels.tsa.arima.model import ARIMA
-from prophet import Prophet
+import pandas as pd
+import matplotlib.pyplot as plt
+
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
-import matplotlib.pyplot as plt
-import warnings
-
-warnings.filterwarnings('ignore')
-
-# Cargar los datos
-file_path = r"/JSON/Resultado_Homogenizado.xlsx"
-data = pd.read_excel(file_path)
-
-# Preprocesamiento de fechas
-data['fecha_hora'] = pd.to_datetime(data['fecha_hora'])
-data.set_index('fecha_hora', inplace=True)
-
-# Verificar que tenemos suficientes datos para todos los periodos
-total_dias = (data.index.max() - data.index.min()).days
-print(f"Total de días en dataset: {total_dias}")
-print(f"Rango de fechas: {data.index.min()} a {data.index.max()}")
-
-# Agregar variables temporales
-data['hora'] = data.index.hour
-data['dia_semana'] = data.index.dayofweek
-data['es_fin_semana'] = data['dia_semana'].isin([5, 6]).astype(int)
-data['mes'] = data.index.month
-data['estacion'] = (data['mes'] % 12 + 3) // 3  # 1: Primavera, 2: Verano, 3: Otoño, 4: Invierno
-
-# Definir variables
-objetivo = 'valor (kWh)'
-features = [
-    # Variables del inversor
-    'eToday (kWh)', 'eTotal (kWh)',
-
-    # Variables meteorológicas/energéticas
-    'air_temp', 'relative_humidity',
-    'power (kW)',
-    'wind_speed_10m', 'wind_direction_10m',
-    'ghi', 'dni', 'gti',
-
-    # Variables temporales
-    'hora', 'dia_semana', 'es_fin_semana', 'mes', 'estacion'
-]
-features = [col for col in features if col in data.columns]
+from statsmodels.tsa.arima.model import ARIMA
+from prophet import Prophet
 
 
-# Funciones de métricas
-def calcular_métricas(y_real, y_pred):
-    """Calcula métricas de evaluación con manejo de errores"""
-    try:
-        rmse = np.sqrt(mean_squared_error(y_real, y_pred))
-        mae = mean_absolute_error(y_real, y_pred)
-        r2 = r2_score(y_real, y_pred)
-        # MAPE (Mean Absolute Percentage Error) con protección contra división por cero
-        mape = np.mean(np.abs((y_real - y_pred) / np.where(y_real == 0, 1, y_real))) * 100
-        return rmse, mae, r2, mape
-    except Exception as e:
-        print(f"Error calculando métricas: {e}")
-        return np.nan, np.nan, np.nan, np.nan
+# =============================================================================
+# CONFIGURACIÓN
+# =============================================================================
 
+file_path = (
+    r"/home/to-o/practicasProfeeionales/"
+    r"Prácticas Profesionales/JSON/Resultado_Homogenizado.xlsx"
+)
 
-# PERIODOS: 1 mes, bimestral, trimestral, anual
-periodos = {
-    "1_mes": "30D",
-    "2_meses_bimestral": "60D",
-    "3_meses_trimestral": "90D",
-    "1_año_anual": "365D"
+N_FOLDS = 5
+
+# K-Fold temporal por bloques deslizantes:
+# 45 días de entrenamiento + 10 días de prueba.
+# Cada nuevo fold avanza 10 días.
+TRAIN_DAYS = 45
+TEST_DAYS = 10
+STEP_DAYS = 10
+
+# Configuración común de Random Forest
+RF_PARAMS = {
+    "n_estimators": 150,
+    "max_depth": 20,
+    "min_samples_split": 5,
+    "min_samples_leaf": 2,
+    "random_state": 42,
+    "n_jobs": -1,
 }
 
-# Verificar que tenemos datos suficientes para cada periodo
-for nombre, periodo in periodos.items():
-    dias = int(periodo[:-1])
-    print(f"{nombre}: Requiere {dias} días de datos")
 
-resultados = {}
-predicciones_completas = {}
+# =============================================================================
+# FUNCIONES AUXILIARES
+# =============================================================================
 
-for nombre, periodo in periodos.items():
-    print(f"\n{'=' * 50}")
-    print(f"Evaluando periodo: {nombre} ({periodo})")
-    print(f"{'=' * 50}")
+def buscar_columna(df, candidatos, obligatoria=False):
+    """
+    Devuelve el primer nombre de columna disponible entre varios candidatos.
+    Permite ejecutar el script tanto con la nomenclatura antigua como con la
+    nomenclatura corregida de la tesis.
+    """
+    for col in candidatos:
+        if col in df.columns:
+            return col
 
-    # Extraer datos de prueba
-    test_data = data.last(periodo)
-    train_data = data.iloc[:-len(test_data)]
+    if obligatoria:
+        raise KeyError(
+            f"No se encontró ninguna de las columnas requeridas: {candidatos}"
+        )
 
-    print(f"Entrenamiento: {train_data.index.min().date()} a {train_data.index.max().date()}")
-    print(f"Prueba: {test_data.index.min().date()} a {test_data.index.max().date()}")
-    print(f"Muestras entrenamiento: {len(train_data)}")
-    print(f"Muestras prueba: {len(test_data)}")
+    return None
 
-    if len(train_data) == 0:
-        print(f"ERROR: No hay datos de entrenamiento para {nombre}. Saltando...")
-        continue
 
-    if len(test_data) == 0:
-        print(f"ERROR: No hay datos de prueba para {nombre}. Saltando...")
-        continue
+def calcular_metricas(y_true, y_pred):
+    """
+    Calcula RMSE, MAE, R² y MAPE.
 
-    # ARIMA
-    print("\n1. Entrenando modelo ARIMA...")
+    Para MAPE se excluyen únicamente las observaciones cuyo valor real es
+    exactamente cero, siguiendo la regla documentada en la tesis.
+    """
+    y_true = np.asarray(y_true, dtype=float)
+    y_pred = np.asarray(y_pred, dtype=float)
+
+    rmse = np.sqrt(mean_squared_error(y_true, y_pred))
+    mae = mean_absolute_error(y_true, y_pred)
+    r2 = r2_score(y_true, y_pred)
+
+    mask = y_true != 0
+    if np.any(mask):
+        mape = np.mean(
+            np.abs((y_true[mask] - y_pred[mask]) / y_true[mask])
+        ) * 100
+    else:
+        mape = np.nan
+
+    return rmse, mae, r2, mape
+
+
+def crear_folds_temporales(data):
+    """
+    Genera 5 folds temporales con ventanas de entrenamiento de tamaño fijo.
+
+    Fold 1: Train 45 días -> Test 10 días
+    Fold 2: avanza 10 días -> Train 45 días -> Test 10 días
+    ...
+    Fold 5: termina al final de los 95 días disponibles.
+
+    Esta estructura preserva estrictamente el orden temporal:
+    todas las observaciones de entrenamiento anteceden a las de prueba.
+    """
+    inicio_global = data.index.min().normalize()
+
+    folds = []
+
+    for fold in range(1, N_FOLDS + 1):
+        train_start = inicio_global + pd.Timedelta(days=(fold - 1) * STEP_DAYS)
+        train_end = train_start + pd.Timedelta(days=TRAIN_DAYS)
+        test_start = train_end
+        test_end = test_start + pd.Timedelta(days=TEST_DAYS)
+
+        train_data = data[
+            (data.index >= train_start) &
+            (data.index < train_end)
+        ].copy()
+
+        test_data = data[
+            (data.index >= test_start) &
+            (data.index < test_end)
+        ].copy()
+
+        if train_data.empty or test_data.empty:
+            raise ValueError(
+                f"El fold {fold} quedó vacío. "
+                "Verifica el rango temporal y la continuidad del dataset."
+            )
+
+        folds.append({
+            "fold": fold,
+            "train_start": train_start,
+            "train_end": train_end,
+            "test_start": test_start,
+            "test_end": test_end,
+            "train_data": train_data,
+            "test_data": test_data,
+        })
+
+    return folds
+
+
+# =============================================================================
+# CARGA Y PREPARACIÓN
+# =============================================================================
+
+data = pd.read_excel(file_path)
+
+if "fecha_hora" not in data.columns:
+    raise KeyError("No se encontró la columna 'fecha_hora'.")
+
+data["fecha_hora"] = pd.to_datetime(data["fecha_hora"])
+data = data.sort_values("fecha_hora")
+data.set_index("fecha_hora", inplace=True)
+
+print("=" * 80)
+print("K-FOLD TEMPORAL POR BLOQUES DESLIZANTES")
+print("=" * 80)
+print(f"Registros cargados: {len(data)}")
+print(f"Rango temporal: {data.index.min()} a {data.index.max()}")
+print(
+    "Duración aproximada: "
+    f"{(data.index.max() - data.index.min()).total_seconds() / 86400:.2f} días"
+)
+
+# Variable objetivo: se admite la nomenclatura corregida o la histórica.
+target = buscar_columna(
+    data,
+    ["valor (W)", "valor (kWh)", "valor"],
+    obligatoria=True
+)
+
+print(f"Variable objetivo utilizada: {target}")
+
+
+# =============================================================================
+# VARIABLES TEMPORALES
+# =============================================================================
+
+data["hora"] = data.index.hour
+data["dia_semana"] = data.index.dayofweek
+data["es_fin_semana"] = data["dia_semana"].isin([5, 6]).astype(int)
+data["mes"] = data.index.month
+
+
+# =============================================================================
+# VARIABLES PREDICTORAS
+# =============================================================================
+
+# Se mantienen las mismas variables generales de los experimentos anteriores.
+columnas_candidatas = [
+    ["eToday", "eToday (kWh)"],
+    ["eTotal", "eTotal (kWh)"],
+    ["air_temp"],
+    ["relative_humidity"],
+    ["power", "power (kW)", "Power"],
+    ["wind_speed_10m"],
+    ["wind_direction_10m"],
+    ["ghi"],
+    ["dni"],
+    ["gti"],
+]
+
+features = []
+
+for candidatos in columnas_candidatas:
+    col = buscar_columna(data, candidatos)
+    if col is not None:
+        features.append(col)
+
+features += [
+    "hora",
+    "dia_semana",
+    "es_fin_semana",
+    "mes",
+]
+
+# Eliminar posibles duplicados conservando orden
+features = list(dict.fromkeys(features))
+
+print("\nVariables disponibles para Random Forest:")
+for feature in features:
+    print(f"  - {feature}")
+
+
+# =============================================================================
+# GENERACIÓN DE FOLDS
+# =============================================================================
+
+folds = crear_folds_temporales(data)
+
+print("\n" + "=" * 80)
+print("ESTRUCTURA DE LOS FOLDS")
+print("=" * 80)
+
+for info in folds:
+    train_data = info["train_data"]
+    test_data = info["test_data"]
+
+    print(
+        f"\nFold {info['fold']}:"
+        f"\n  Train: {train_data.index.min()} -> {train_data.index.max()}"
+        f"\n         {len(train_data)} registros"
+        f"\n  Test : {test_data.index.min()} -> {test_data.index.max()}"
+        f"\n         {len(test_data)} registros"
+    )
+
+
+# =============================================================================
+# ENTRENAMIENTO Y EVALUACIÓN
+# =============================================================================
+
+resultados = []
+predicciones_folds = {}
+
+for info in folds:
+    fold = info["fold"]
+    train_data = info["train_data"]
+    test_data = info["test_data"]
+
+    print("\n" + "=" * 80)
+    print(f"FOLD {fold}/{N_FOLDS}")
+    print("=" * 80)
+
+    y_train = train_data[target]
+    y_test = test_data[target]
+
+    predicciones = {}
+
+    # -------------------------------------------------------------------------
+    # 1. ARIMA
+    # -------------------------------------------------------------------------
+    print("\n[1/3] Entrenando ARIMA(5,1,0)...")
+
     try:
-        arima_model = ARIMA(train_data[objetivo], order=(5, 1, 0))
-        arima_model_fit = arima_model.fit()
-        arima_pred = arima_model_fit.forecast(steps=len(test_data))
-        arima_success = True
-    except Exception as e:
-        print(f"   Error en ARIMA: {e}")
-        arima_pred = np.full(len(test_data), np.nan)
-        arima_success = False
+        arima_model = ARIMA(y_train, order=(5, 1, 0))
+        arima_fit = arima_model.fit()
+        arima_pred = arima_fit.forecast(steps=len(test_data))
+        arima_pred = np.asarray(arima_pred)
 
-    # Prophet con regresores
-    print("2. Entrenando modelo Prophet...")
+        predicciones["ARIMA"] = arima_pred
+        print("ARIMA: OK")
+
+    except Exception as error:
+        print(f"ARIMA: ERROR -> {error}")
+        predicciones["ARIMA"] = None
+
+    # -------------------------------------------------------------------------
+    # 2. PROPHET
+    # -------------------------------------------------------------------------
+    # Se mantiene como modelo temporal sin regresores externos para que su
+    # configuración sea comparable con TimeSeriesSplit y Train-Test Split.
+    print("[2/3] Entrenando Prophet...")
+
     try:
-        prophet_data = train_data.reset_index().rename(columns={'fecha_hora': 'ds', objetivo: 'y'})
-
-        # Seleccionar regresores disponibles
-        regresores_disponibles = ['air_temp', 'relative_humidity', 'power (kW)', 'wind_speed_10m', 'wind_direction_10m', 'ghi', 'dni', 'gti', 'eToday (kWh)', 'eTotal (kWh)']
-        regresores_usar = [r for r in regresores_disponibles if r in train_data.columns]
+        prophet_train = (
+            train_data
+            .reset_index()[["fecha_hora", target]]
+            .rename(columns={"fecha_hora": "ds", target: "y"})
+        )
 
         prophet_model = Prophet(
             daily_seasonality=True,
             weekly_seasonality=True,
-            yearly_seasonality=True,
-            seasonality_mode='multiplicative'
+            yearly_seasonality=False,
+            seasonality_mode="multiplicative",
+            changepoint_prior_scale=0.05,
         )
 
-        # Añadir regresores
-        for reg in regresores_usar:
-            prophet_data[reg] = train_data[reg].values
-            prophet_model.add_regressor(reg)
-            print(f"   Añadido regresor: {reg}")
+        prophet_model.fit(prophet_train)
 
-        prophet_model.fit(prophet_data)
+        future = prophet_model.make_future_dataframe(
+            periods=len(test_data),
+            freq="5min",
+            include_history=False,
+        )
 
-        # Crear dataframe futuro con regresores
-        future = prophet_model.make_future_dataframe(periods=len(test_data), freq='5T', include_history=False)
+        prophet_pred = prophet_model.predict(future)["yhat"].to_numpy()
 
-        # Añadir regresores al futuro (usamos valores de test_data)
-        for reg in regresores_usar:
-            if reg in test_data.columns:
-                # Asegurarnos de que coincida la longitud
-                future[reg] = test_data[reg].reset_index(drop=True).values[:len(future)]
+        predicciones["Prophet"] = prophet_pred
+        print("Prophet: OK")
 
-        forecast = prophet_model.predict(future)
-        prophet_forecast = forecast['yhat'].values
-        prophet_success = True
-    except Exception as e:
-        print(f"   Error en Prophet: {e}")
-        prophet_forecast = np.full(len(test_data), np.nan)
-        prophet_success = False
+    except Exception as error:
+        print(f"Prophet: ERROR -> {error}")
+        predicciones["Prophet"] = None
 
-    # Random Forest
-    print("3. Entrenando modelo Random Forest...")
+    # -------------------------------------------------------------------------
+    # 3. RANDOM FOREST
+    # -------------------------------------------------------------------------
+    print("[3/3] Entrenando Random Forest...")
+
     try:
-        # Asegurarnos de que todas las features están disponibles
-        features_disponibles = [f for f in features if f in train_data.columns and f in test_data.columns]
+        X_train = train_data[features]
+        X_test = test_data[features]
 
-        if len(features_disponibles) > 0:
-            X_train = train_data[features_disponibles]
-            X_test = test_data[features_disponibles]
-            y_train = train_data[objetivo]
-            y_test = test_data[objetivo]
+        rf_model = RandomForestRegressor(**RF_PARAMS)
+        rf_model.fit(X_train, y_train)
 
-            rf_model = RandomForestRegressor(
-                n_estimators=100,
-                random_state=42,
-                n_jobs=-1,
-                max_depth=15,
-                min_samples_split=5
-            )
-            rf_model.fit(X_train, y_train)
-            rf_pred = rf_model.predict(X_test)
+        rf_pred = rf_model.predict(X_test)
+        predicciones["Random Forest"] = rf_pred
 
-            # Calcular importancia de características
-            importancia = pd.DataFrame({
-                'feature': features_disponibles,
-                'importance': rf_model.feature_importances_
-            }).sort_values('importance', ascending=False)
-
-            print(f"   Top 5 características importantes:")
-            for idx, row in importancia.head().iterrows():
-                print(f"      {row['feature']}: {row['importance']:.4f}")
-
-            rf_success = True
-        else:
-            print("   No hay características disponibles para Random Forest")
-            rf_pred = np.full(len(test_data), np.nan)
-            rf_success = False
-    except Exception as e:
-        print(f"   Error en Random Forest: {e}")
-        rf_pred = np.full(len(test_data), np.nan)
-        rf_success = False
-
-    # Calcular métricas solo si las predicciones son válidas
-    metricas_arima = calcular_métricas(test_data[objetivo], arima_pred) if arima_success else (np.nan, np.nan, np.nan,
-                                                                                               np.nan)
-    metricas_prophet = calcular_métricas(test_data[objetivo], prophet_forecast) if prophet_success else (np.nan, np.nan,
-                                                                                                         np.nan, np.nan)
-    metricas_rf = calcular_métricas(test_data[objetivo], rf_pred) if rf_success else (np.nan, np.nan, np.nan, np.nan)
-
-    # Guardar métricas
-    resultados[nombre] = {
-        "ARIMA": metricas_arima,
-        "Prophet": metricas_prophet,
-        "RandomForest": metricas_rf
-    }
-
-    # Guardar predicciones para análisis posterior
-    predicciones_completas[nombre] = {
-        'test_real': test_data[objetivo].values,
-        'ARIMA': arima_pred,
-        'Prophet': prophet_forecast,
-        'RandomForest': rf_pred,
-        'fechas': test_data.index
-    }
-
-    # Graficar resultados
-    modelos = {'ARIMA': arima_pred, 'Prophet': prophet_forecast, 'RandomForest': rf_pred}
-
-    for modelo, prediccion in modelos.items():
-        if not np.all(np.isnan(prediccion)):
-            plt.figure(figsize=(14, 6))
-
-            # Gráfico principal
-            plt.subplot(2, 1, 1)
-            plt.plot(test_data.index, test_data[objetivo], label='Real', color='black', linewidth=2, alpha=0.7)
-            plt.plot(test_data.index, prediccion, label=modelo, linestyle='--', linewidth=1.5)
-            plt.title(f'{modelo} - Predicción para {nombre} (Periodo: {periodo})')
-            plt.ylabel('Generación (kWh)')
-            plt.legend()
-            plt.grid(True, alpha=0.3)
-
-            # Gráfico de errores
-            plt.subplot(2, 1, 2)
-            error = test_data[objetivo].values - prediccion
-            plt.plot(test_data.index, error, label='Error', color='red', linewidth=1)
-            plt.axhline(y=0, color='black', linestyle='-', alpha=0.3)
-            plt.fill_between(test_data.index, error, 0, where=(error >= 0), color='red', alpha=0.2,
-                             label='Sobreestimación')
-            plt.fill_between(test_data.index, error, 0, where=(error < 0), color='blue', alpha=0.2,
-                             label='Subestimación')
-            plt.title(f'Error de Predicción - {modelo}')
-            plt.ylabel('Error (kWh)')
-            plt.xlabel('Fecha y Hora')
-            plt.legend()
-            plt.grid(True, alpha=0.3)
-
-            plt.tight_layout()
-            plt.show()
-        else:
-            print(f"   No se pudo graficar {modelo}: predicciones no disponibles")
-
-# Mostrar resultados
-print("\n" + "=" * 80)
-print("RESULTADOS POR PERIODO")
-print("=" * 80)
-
-for periodo, metricas in resultados.items():
-    print(f"\n{periodo}:")
-    print("-" * 50)
-
-    for modelo, valores in metricas.items():
-        if not np.isnan(valores[0]):
-            print(
-                f"{modelo:15s} - RMSE: {valores[0]:.4f} | MAE: {valores[1]:.4f} | R²: {valores[2]:.4f} | MAPE: {valores[3]:.2f}%")
-        else:
-            print(f"{modelo:15s} - Métricas no disponibles")
-
-# Resultados promedio (solo para modelos con métricas válidas)
-print("\n" + "=" * 80)
-print("RESULTADOS PROMEDIO POR MODELO (excluyendo NaN)")
-print("=" * 80)
-
-promedios = {}
-for modelo in ['ARIMA', 'Prophet', 'RandomForest']:
-    # Recoger solo métricas válidas
-    modelo_vals = []
-    for periodo in resultados:
-        vals = resultados[periodo][modelo]
-        if not np.isnan(vals[0]):  # Si RMSE no es NaN
-            modelo_vals.append(vals)
-
-    if modelo_vals:
-        promedio = np.nanmean(modelo_vals, axis=0)
-        promedios[modelo] = promedio
-
-        # Contar cuántos periodos tuvieron métricas válidas
-        periodos_validos = len(modelo_vals)
-        print(f"\n{modelo}:")
-        print(f"  Periodos con métricas válidas: {periodos_validos}/{len(periodos)}")
-        print(f"  RMSE promedio:  {promedio[0]:.4f}")
-        print(f"  MAE promedio:   {promedio[1]:.4f}")
-        print(f"  R² promedio:    {promedio[2]:.4f}")
-        print(f"  MAPE promedio:  {promedio[3]:.2f}%")
-
-# Análisis de tendencia del error por periodo
-print("\n" + "=" * 80)
-print("ANÁLISIS DE TENDENCIA: ERROR VS LONGITUD DEL PERIODO")
-print("=" * 80)
-
-# Crear dataframe para análisis
-df_tendencia = []
-for periodo, metricas in resultados.items():
-    for modelo in ['ARIMA', 'Prophet', 'RandomForest']:
-        vals = metricas[modelo]
-        if not np.isnan(vals[0]):
-            # Extraer días del periodo
-            dias = int(periodos[periodo][:-1])
-            df_tendencia.append({
-                'Periodo': periodo,
-                'Dias': dias,
-                'Modelo': modelo,
-                'RMSE': vals[0],
-                'MAE': vals[1],
-                'R2': vals[2],
-                'MAPE': vals[3]
+        importancia = (
+            pd.DataFrame({
+                "Variable": features,
+                "Importancia": rf_model.feature_importances_
             })
+            .sort_values("Importancia", ascending=False)
+        )
 
-if df_tendencia:
-    df_tendencia = pd.DataFrame(df_tendencia)
+        print("Random Forest: OK")
+        print("Principales variables:")
+        for _, row in importancia.head(5).iterrows():
+            print(
+                f"  - {row['Variable']}: "
+                f"{row['Importancia']:.4f}"
+            )
 
-    # Graficar error vs días
-    plt.figure(figsize=(12, 8))
+    except Exception as error:
+        print(f"Random Forest: ERROR -> {error}")
+        predicciones["Random Forest"] = None
 
-    modelos_unicos = df_tendencia['Modelo'].unique()
-    colores = {'ARIMA': 'blue', 'Prophet': 'green', 'RandomForest': 'red'}
-    marcadores = {'ARIMA': 'o', 'Prophet': 's', 'RandomForest': '^'}
+    # -------------------------------------------------------------------------
+    # MÉTRICAS
+    # -------------------------------------------------------------------------
+    print("\nMétricas:")
 
-    for i, metrica in enumerate(['RMSE', 'MAE', 'R2', 'MAPE'], 1):
-        plt.subplot(2, 2, i)
+    for modelo, pred in predicciones.items():
+        if pred is None:
+            continue
 
-        for modelo in modelos_unicos:
-            df_modelo = df_tendencia[df_tendencia['Modelo'] == modelo]
-            if not df_modelo.empty:
-                plt.plot(df_modelo['Dias'], df_modelo[metrica],
-                         label=modelo, color=colores[modelo],
-                         marker=marcadores[modelo], linewidth=2, markersize=8)
+        rmse, mae, r2, mape = calcular_metricas(y_test.values, pred)
 
-        plt.xlabel('Días del Periodo de Prueba')
-        plt.ylabel(metrica)
-        plt.title(f'{metrica} vs Longitud del Periodo')
-        plt.grid(True, alpha=0.3)
+        resultados.append({
+            "Fold": fold,
+            "Modelo": modelo,
+            "RMSE": rmse,
+            "MAE": mae,
+            "R2": r2,
+            "MAPE": mape,
+            "Train_Inicio": train_data.index.min(),
+            "Train_Fin": train_data.index.max(),
+            "Test_Inicio": test_data.index.min(),
+            "Test_Fin": test_data.index.max(),
+            "N_Train": len(train_data),
+            "N_Test": len(test_data),
+        })
 
-        if i == 1:  # Solo poner leyenda en el primer gráfico
-            plt.legend()
+        print(
+            f"{modelo:15s} | "
+            f"RMSE: {rmse:10.4f} | "
+            f"MAE: {mae:10.4f} | "
+            f"R²: {r2:9.4f} | "
+            f"MAPE: {mape:10.2f}%"
+        )
 
+    predicciones_folds[fold] = {
+        "fechas": test_data.index,
+        "real": y_test.values,
+        **predicciones,
+    }
+
+    # -------------------------------------------------------------------------
+    # GRÁFICA DEL FOLD
+    # -------------------------------------------------------------------------
+    plt.figure(figsize=(14, 6))
+
+    plt.plot(
+        test_data.index,
+        y_test.values,
+        label="Real",
+        linewidth=2,
+        alpha=0.8,
+    )
+
+    for modelo, pred in predicciones.items():
+        if pred is not None:
+            plt.plot(
+                test_data.index,
+                pred,
+                label=modelo,
+                linestyle="--",
+                linewidth=1.2,
+                alpha=0.8,
+            )
+
+    plt.title(
+        f"K-Fold temporal por bloques - Fold {fold}\n"
+        f"Train: {TRAIN_DAYS} días | Test: {TEST_DAYS} días"
+    )
+    plt.xlabel("Fecha y hora")
+    plt.ylabel("Potencia (W)")
+    plt.legend()
+    plt.grid(True, alpha=0.3)
     plt.tight_layout()
+
+    nombre_figura = f"KFold_Temporal_Fold_{fold}.png"
+    plt.savefig(nombre_figura, dpi=300, bbox_inches="tight")
     plt.show()
 
-    # Mostrar tabla resumen
-    print("\nResumen por modelo y longitud de periodo:")
-    print(df_tendencia.pivot_table(index=['Modelo', 'Dias'], values=['RMSE', 'MAE', 'R2', 'MAPE']).round(4))
-else:
-    print("No hay suficientes datos para análisis de tendencia")
+    print(f"Figura guardada: {nombre_figura}")
 
-# Guardar resultados en CSV
-try:
-    resultados_df = pd.DataFrame.from_dict({(i, j): resultados[i][j]
-                                            for i in resultados.keys()
-                                            for j in resultados[i].keys()},
-                                           orient='index')
-    resultados_df.index = pd.MultiIndex.from_tuples(resultados_df.index)
-    resultados_df.columns = ['RMSE', 'MAE', 'R2', 'MAPE']
 
-    resultados_df.to_csv('resultados_kfold_periodos_largos.csv')
-    print(f"\nResultados guardados en 'resultados_kfold_periodos_largos.csv'")
-except Exception as e:
-    print(f"\nError guardando resultados: {e}")
+# =============================================================================
+# RESULTADOS GENERALES
+# =============================================================================
 
-print("\n¡Evaluación completada!")
+df_resultados = pd.DataFrame(resultados)
+
+print("\n" + "=" * 80)
+print("RESULTADOS POR FOLD")
+print("=" * 80)
+print(
+    df_resultados[
+        ["Fold", "Modelo", "RMSE", "MAE", "R2", "MAPE"]
+    ].to_string(index=False)
+)
+
+
+# =============================================================================
+# PROMEDIO Y DESVIACIÓN ESTÁNDAR
+# =============================================================================
+
+resumen = (
+    df_resultados
+    .groupby("Modelo")
+    .agg(
+        RMSE_promedio=("RMSE", "mean"),
+        RMSE_std=("RMSE", "std"),
+        MAE_promedio=("MAE", "mean"),
+        MAE_std=("MAE", "std"),
+        R2_promedio=("R2", "mean"),
+        R2_std=("R2", "std"),
+        MAPE_promedio=("MAPE", "mean"),
+        MAPE_std=("MAPE", "std"),
+    )
+    .reset_index()
+)
+
+print("\n" + "=" * 80)
+print("PROMEDIO Y DESVIACIÓN ESTÁNDAR ENTRE LOS 5 FOLDS")
+print("=" * 80)
+print(resumen.to_string(index=False))
+
+
+# =============================================================================
+# GRÁFICA DE MÉTRICAS POR FOLD
+# =============================================================================
+
+for metrica in ["RMSE", "MAE", "R2", "MAPE"]:
+    plt.figure(figsize=(10, 5))
+
+    for modelo in df_resultados["Modelo"].unique():
+        subset = df_resultados[df_resultados["Modelo"] == modelo]
+
+        plt.plot(
+            subset["Fold"],
+            subset[metrica],
+            marker="o",
+            linewidth=2,
+            label=modelo,
+        )
+
+    plt.xlabel("Fold")
+    plt.ylabel("MAPE (%)" if metrica == "MAPE" else metrica)
+    plt.title(f"{metrica} por fold - K-Fold temporal por bloques")
+    plt.xticks(range(1, N_FOLDS + 1))
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+
+    archivo = f"KFold_Temporal_{metrica}.png"
+    plt.savefig(archivo, dpi=300, bbox_inches="tight")
+    plt.show()
+
+    print(f"Figura guardada: {archivo}")
+
+
+# =============================================================================
+# EXPORTACIÓN
+# =============================================================================
+
+df_resultados.to_csv(
+    "resultados_kfold_temporal_folds.csv",
+    index=False,
+)
+
+resumen.to_csv(
+    "resultados_kfold_temporal_resumen.csv",
+    index=False,
+)
+
+print("\nArchivos generados:")
+print("  - resultados_kfold_temporal_folds.csv")
+print("  - resultados_kfold_temporal_resumen.csv")
+print("  - KFold_Temporal_Fold_1.png ... KFold_Temporal_Fold_5.png")
+print("  - KFold_Temporal_RMSE.png")
+print("  - KFold_Temporal_MAE.png")
+print("  - KFold_Temporal_R2.png")
+print("  - KFold_Temporal_MAPE.png")
+
+print("\n" + "=" * 80)
+print("K-FOLD TEMPORAL COMPLETADO")
+print("=" * 80)
